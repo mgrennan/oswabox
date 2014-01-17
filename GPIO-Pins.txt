@@ -1,0 +1,26 @@
+The GPIO pins on the Raspberry Pi can be confusing.
+
+Here is a list of the pins on the Rev 1 board, how they
+are numbered and their default state.
+
++----------+-Rev1-+------+--------+------+-------+
+| wiringPi | GPIO | Phys | Name   | Mode | Value |
++----------+------+------+--------+------+-------+
+|      0   |  17  |  11  | GPIO 0 | IN   | Low   |
+|      1   |  18  |  12  | GPIO 1 | IN   | Low   |
+|      2   |  21  |  13  | GPIO 2 | IN   | Low   |
+|      3   |  22  |  15  | GPIO 3 | IN   | Low   |
+|      4   |  23  |  16  | GPIO 4 | IN   | Low   |
+|      5   |  24  |  18  | GPIO 5 | IN   | Low   |
+|      6   |  25  |  22  | GPIO 6 | IN   | Low   |
+|      7   |   4  |   7  | GPIO 7 | IN   | Low   |
+|      8   |   0  |   3  | SDA    | ALT0 | High  |
+|      9   |   1  |   5  | SCL    | ALT0 | High  |
+|     10   |   8  |  24  | CE0    | ALT0 | High  |
+|     11   |   7  |  26  | CE1    | ALT0 | High  |
+|     12   |  10  |  19  | MOSI   | ALT0 | Low   |
+|     13   |   9  |  21  | MISO   | ALT0 | Low   |
+|     14   |  11  |  23  | SCLK   | ALT0 | Low   |
+|     15   |  14  |   8  | TxD    | ALT0 | High  |
+|     16   |  15  |  10  | RxD    | ALT0 | High  |
++----------+------+------+--------+------+-------+
