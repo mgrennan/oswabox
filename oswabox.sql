@@ -1,0 +1,21 @@
+CREATE TABLE `obs` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `Station` char(8) COLLATE utf8_bin NOT NULL,
+  `Datetime` datetime NOT NULL,
+  `Temperature` float DEFAULT NULL,
+  `Pressure` float DEFAULT NULL,
+  `Relative_Humidity` float DEFAULT NULL,
+  `Wind_Speed` float DEFAULT NULL,
+  `Wind_Direction` float DEFAULT NULL,
+  `Rain` float DEFAULT NULL,
+  `Device_1` float DEFAULT NULL,
+  `Device_2` float DEFAULT NULL,
+  `Device_3` float DEFAULT NULL,
+  `Device_4` float DEFAULT NULL,
+  `Device_5` float DEFAULT NULL,
+  `Device_6` float DEFAULT NULL,
+  `Device_7` float DEFAULT NULL,
+  `Device_8` float DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `DateTime` (`Datetime`)
+) ENGINE=InnoDB ;
