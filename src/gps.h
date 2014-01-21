@@ -10,6 +10,9 @@ struct location {
     int hour;
     int minute;
     int second;
+    int day;
+    int month;
+    int year;
 };
 typedef struct location loc_t;
 

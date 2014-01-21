@@ -14,6 +14,7 @@
 //      sudo ./temp
 */
 #include <stdio.h>
+#include <unistd.h>
 #include <wiringPi.h>
 #include <maxdetect.h>
 
@@ -28,14 +29,13 @@ int main (void)
 {
 	int temp, rh ;
 	int newTemp, newRh ;
-	float dp ;
 
 	temp = rh = newTemp = newRh = 0 ;
 
 	wiringPiSetup () ;
 	piHiPri       (55) ;
 
-	sleep (1) ;
+	sleep(1) ;
 
 	readRHT03 (RHT03_PIN, &newTemp, &newRh) ;
 
@@ -44,9 +44,9 @@ int main (void)
 		temp = newTemp ;
 		rh   = newRh ;
 
-		printf ("Temperature: %5.1f c = %5.2f f\n", temp / 10.0, ((temp /10.0) * 1.8) + 32) ;
-		printf ("   Humidity: %5.1f%%\n", rh / 10.0, (rh / 10.0) * 3.2808) ;
 	}
+	printf("Temperature: %5.2f c = %5.2f f\n", temp / 10.0, ((temp /10.0) * 1.8) + 32) ;
+	printf("   Humidity: %5.2f %%\n", rh / 10.0);
 
 	return 0 ;
 }

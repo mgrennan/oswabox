@@ -1,6 +1,6 @@
 /*
 //  position.c
-//  Mark Grennan - 2014-01-14
+//  Mark Grennan - 2014-01-17
 //
 //  Using the MCP3008 AD converter (ADC) read the Air Quality
 //  insterment and print the values.
@@ -18,7 +18,7 @@
 */
 #include <stdio.h>
 #include <stdlib.h>
-#include <gps.h>
+#include "gps.h"
 
 int main(void) {
 
@@ -29,7 +29,8 @@ int main(void) {
 
     gps_location(&data);	// Read and parse the GPS info
 
-    printf("Time: %02d:%02d:%02d Lat:%lf lon:%lf Atl:%lf\n", data.hour, data.minute, data.second, data.latitude, data.longitude, data.altitude);
+    printf("Date: 20%02d-%02d-%02d %02d:%02d:%02d Lat: %lf lon: %lf Atl: %lf\n", 
+	data.year, data.month, data.day, data.hour, data.minute, data.second, data.latitude, data.longitude, data.altitude);
 
     return EXIT_SUCCESS;
 }

@@ -8,6 +8,9 @@
 #include "serial.h"
 
 extern void gps_init(void) {
+
+//    serialOpen ("/dev/ttyAMA0", 9600) ;
+
     serial_init();
     serial_config();
 
@@ -43,11 +46,18 @@ extern void gps_location(loc_t *coord) {
 
                 status |= NMEA_GPGGA;
                 break;
+
             case NMEA_GPRMC:
                 nmea_parse_gprmc(buffer, &gprmc);
 
+		coord->hour = gprmc.hour;
+		coord->minute = gprmc.minute;
+		coord->second = gprmc.second;
                 coord->speed = gprmc.speed;
                 coord->course = gprmc.course;
+		coord->day = gprmc.day;
+		coord->month = gprmc.month;
+		coord->year = gprmc.year;
 
                 status |= NMEA_GPRMC;
                 break;

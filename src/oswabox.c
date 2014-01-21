@@ -6,10 +6,12 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <ctype.h>
+#include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
 
 #include <wiringPi.h>
+#include "wiringPiSPI.h"
 #include <gertboard.h>
 #include <maxdetect.h>
 #include "gps.h"
@@ -58,6 +60,10 @@ float wind_speed()
 
 }
 
+float wind_direction()
+{
+	return 0.0;
+}
 
 float rain_fall()
 {
@@ -121,22 +127,22 @@ float pressure()
 	float temp = 24.9;
 	float pressure = 95693.0;
 	float rawAltitude = 480.17;
-	float altitude = 400.72;
+	float altitude = 1200;
 
 	// read current temp
-	//    temp = readTemperature();
+	temp += 0.0;
 
 	// Read the current barometric pressure level
-	//    pressure = readPresure();
+	pressure += 0.0;
 
 	// To calculate altitude based on an estimated mean sea level pressure
 	// (1013.25 hPa) call the function as follows, but this won't be very accurate
-	//    rawAltitude = readAltitude();
+	rawAltitude += 0.0;
 
 	// To specify a more accurate altitude, enter the correct mean sea level
 	// pressure level.  For example, if the current pressure level is 1023.50 hPa
 	// enter 102350 since we include two decimal places in the integer value
-	//    altitude = bmp.readAltitude(currentBMP);
+	altitude += 0.0;
 
 	#ifdef DEBUG
 	printf("Temperature:  % 4.2f C  \t= % 4.2f F\n", temp, (temp * 1.8) + 32);
@@ -168,7 +174,6 @@ long readadc(adcnum)
 	uint8_t buff[3] = { 0b00000001, 0b10000000, 0b00000000 }
 	;
 	long adc;
-	char *b;
 
 	buff[1] += adcnum << 4 ;
 
@@ -252,13 +257,13 @@ float read_adc_dev(int pin)
 }
 
 
-main (int argc, char **argv)
+int main (int argc, char **argv)
 {
-	int GPSflag = 0;
-	int Headerflag = 0;
-	int Bannerflag = 1;
-	char *output = NULL;			 // h=HUMAN, c=CSV, s=SQL
-	int index;
+	int GPSflag = 0;			// use GPS
+	int Bannerflag = 1;			// Print program Banner
+	char output[20] = "";			// h=HUMAN, c=CSV, s=SQL
+	char station[20] = "";			// Name the Station
+	char table[64] = "";			// Table name used in SQL
 	int c;
 	float value;
 
@@ -266,7 +271,20 @@ main (int argc, char **argv)
 
 	opterr = 0;
 
-	while ((c = getopt (argc, argv, "bgho:")) != -1)
+	if (argc == 1)
+	{
+		printf("\n\nA input type is required.\n\n");
+		printf("Usage: -b    - Turn off the banner\n");
+		printf("       -g    - Turn on the GPS\n");
+		printf("       -s $  - Station name\n");
+		printf("       -t $  - Table name used for SQL\n");
+		printf("       -o [chq] output type\n");
+		printf("           c - CSV output\n");
+		printf("           h - Human readable output\n");
+		printf("           s - SQL output\n");
+		abort();
+	}
+	while ((c = getopt (argc, argv, "bgo:s:t:")) != -1)
 		switch (c)
 		{
 			case 'b':
@@ -275,30 +293,36 @@ main (int argc, char **argv)
 			case 'g':
 				GPSflag = 1;
 				break;
-			case 'h':
-				Headerflag = 1;
-				break;	
 			case 'o':
-				output = optarg;
+				optarg[20] = 0;		// Limit the length of the input
+				strcpy(output, optarg);
+				break;
+			case 's':
+				optarg[20] = 0;		// Limit the length of the input
+				strcpy(station, optarg);
+				break;
+			case 't':
+				optarg[64] = 0;		// Limit the length of the input
+				strcpy(table, optarg);
 				break;
 			case '?':
-				if (optopt == 'o')
-					fprintf (stderr, "Option -%c requires an argument.\n", optopt);
-				else if (isprint (optopt))
-					fprintf (stderr, "Unknown option `-%c'.\n", optopt);
+				if (optopt == 's')
+					fprintf(stderr,"\nOption -s requires an argument.\n\n");
+					break;
+				if (optopt == 'o') 
+					fprintf(stderr, "\nOption -o requires an argument.\n\n");
+					break;
+				if (isprint (optopt))
+					fprintf(stderr, "\nUnknown option `-%c'.\n\n", optopt);
 				else
-					fprintf (stderr, "Unknown option character `\\x%x'.\n", optopt);
-				return 1;
+				abort();
 			default:
-				abort ();
+					fprintf(stderr, "\nUnknown option -%c\n\n", optopt);
+				abort();
 		}
 
-	#ifdef DEBUG				 // debug command line arguments
-	printf ("GPSflag = %d, output = %s\n", GPSflag, output);
-
-	for (index = optind; index < argc; index++)
-		printf ("Non-option argument %s\n", argv[index]);
-	#endif						 /* DEBUG */
+	if (output[0] == 0)			// make the defalt ouput type Human readable
+		strcpy(output, "human");
 
 	if (Bannerflag)
 	{
@@ -322,33 +346,40 @@ main (int argc, char **argv)
 	//
 	if (wiringPiSetup () < 0)
 	{
-		printf (stderr, "Unable to setup wiringPi.\n");
+		fprintf (stderr, "Unable to setup wiringPi.\n");
 		return 1;
 	}
 
 	// set Pin 17/0 generate an interrupt on high-to-low transitions
 	if ( wiringPiISR (WIND_PIN, INT_EDGE_FALLING, &WindInterrupt) < 0 )
 	{
-		printf (stderr, "Unable to setup wind interrupts\n");
+		fprintf (stderr, "Unable to setup wind interrupts\n");
 		return 1;
 	}
 
 	//
 	// Start reading data
 	//
-	digitalWrite (LED, HIGH) ;	 // LED On
+	digitalWrite (LED, HIGH) ;	 // Turn LED On
 
 	if ( GPSflag )
 	{
 		gps_location(&data);	 // Read and parse the GPS info
+	} else {
+
+		// Read data time from system
 	}
 
 	switch((char)output[0])
 	{
+
+		//
+		// Output the current Observation as a CSV text line.
+		//
 		case 'c':
 			if (GPSflag)
 			{
-				printf("20%02d-%02d-%02d,",data.year, data.month, data.day);
+				printf("%s, 20%02d-%02d-%02dT", station, data.year, data.month, data.day);
 				printf("%02d:%02d:%02d,",data.hour, data.minute, data.second);
 				printf("%lf,",data.latitude);
 				printf("%lf,",data.longitude);
@@ -361,6 +392,10 @@ main (int argc, char **argv)
 				printf(",%6.4f", read_adc_dev(c));
 			}
 			break;
+
+		//
+		// Output the current observations in a human readable format.
+		//
 		case 'h':
 			printf("The current conditions are:\n\n");
 			if ( GPSflag )
@@ -373,20 +408,44 @@ main (int argc, char **argv)
 			}
 			value = temp(1);
 			printf(" Tempeture: %lf c = %5.2f f\n", value, (value * 1.8) + 32);
-			printf("  Humitity: %lf %\n", temp(0));
+			printf("  Humitity: %lf %%\n", temp(0));
 			value = pressure();
 			printf("  Pressure: %lf hPa = % 4.2f inch of mercury\n", value, value * 0.02953);
 			printf("Wind Speed: %lf mph\n Direction: %lf\n Rain Fall: %lf ipm\n",
 				wind_speed(),
-				rain_fall(),
-				24.7
+				wind_direction(),
+				rain_fall()
 				);
 			for (c=0; c<8; c++)
 			{
 				printf("  Device %d: %lf ohms\n",c , read_adc_dev(c));
 			};
 			break;
+
+		//
+		// Ouput a text line with an SQL insert statment
+		//
 		case 's':
+			printf("INSERT INTO %s ( Station, Datetime, Temperature, Pressure, ", table);
+			printf("Relative_Humidity, Wind_Speed, Wind_Direction, Rain, ");
+			printf("Device_1, Device_2, Device_3, Device_4, ");
+			printf("Device_5, Device_6, Device_7, Device_8) values (");
+
+			printf("\"%s\",", station);
+			printf("\"20%02d-%02d-%02d ", data.year, data.month, data.day);
+			printf("%02d:%02d:%02d\"", data.hour, data.minute, data.second);
+			printf(",%6.4f", temp(1));		// Temperature
+			printf(",%6.4f", pressure());		// Pressure
+			printf(",%6.4f", temp(0));		// Relative_Humidity
+			printf(",%6.4f", wind_speed()); 	// Wind Speed
+			printf(",%6.4f", wind_direction());	// Wind Direction
+			printf(",%6.4f", rain_fall());		// Rain Fall
+			for (c=0; c<8; c++)
+			{
+				printf(",%6.4f", read_adc_dev(c));
+			}
+
+			printf(");");
 			break;
 	}
 	digitalWrite (LED, LOW) ;	 // LED Off

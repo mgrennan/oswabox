@@ -41,7 +41,6 @@ void myInterrupt(void)
 int main(void)
 {
 	long count ;				// Count the minutes run
-	long total ;				// Total number of bucket dumps 
 	
 	if (wiringPiSetup () < 0) 		// sets up the wiringPi library
 	{
@@ -62,10 +61,9 @@ int main(void)
 	while ( 1 )				// display counter value every second.
 	{
 						// event rate is 0.011 inches per event 
-		printf( "Minuts: %04 %08.2f Avg: %08.2f ipm\n", count, eventCount * 0.011, (eventCount * 0.011) / count );
+		printf("Minuts: %04ld %lf Avg: %lf ipm\n", count, eventCount * 0.011, (eventCount * 0.011) / count);
 		eventCount = 0;
 		delay( 60000 );			 // wait 60 second
-
 
 	}
 

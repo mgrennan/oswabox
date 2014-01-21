@@ -25,8 +25,10 @@
 //  RaspberryPi.
 */
 #include <stdio.h>
+#include <stdlib.h>
 #include <stdint.h>
 #include <wiringPi.h>
+#include "wiringPiSPI.h"
 #include <gertboard.h>
 
 // read SPI data from MCP3008 chip, 8 possible adc's (0 thru 7)
@@ -50,7 +52,6 @@ long readadc(adcnum)
 	uint8_t buff[3] = { 0b00000001, 0b10000000, 0b00000000 }
 	;
 	long adc;
-	char *b;
 
 	buff[1] += adcnum << 4 ;
 

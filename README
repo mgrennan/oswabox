@@ -1,5 +1,5 @@
 
-OSWABox - Ver. 0.1
+OSWABox - Ver. 0.4
 ================
 
 This code is developted to read weather data from the Open Source
@@ -36,12 +36,12 @@ I want to thank Walter Dal Mut for the gps library used here. https://github.com
 
 To compile all the examples and put them in ~/bin type
 
-    cd src
     make
 
 To compile an individual example, just type
 
-    make exampleName
+    cd src
+    make {exampleName}
 
 The resulting appliation are written to the build directory.
 

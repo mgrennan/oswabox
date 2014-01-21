@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <wiringPi.h>
+#include "wiringPiSPI.h"
 #include <gertboard.h>
 
 #define samples 50				 // Number of AD samples to take
@@ -43,7 +44,6 @@ long readadc(adcnum)
 	uint8_t buff[3] = { 0b00000001, 0b10000000, 0b00000000 }
 	;
 	long adc;
-	char *b;
 
 	buff[1] += adcnum << 4 ;
 

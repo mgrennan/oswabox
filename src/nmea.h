@@ -17,26 +17,16 @@
 #define NMEA_MESSAGE_ERR 0xC0
 
 struct gpgga {
-    // Latitude eg: 4124.8963 (XXYY.ZZKK.. DEG, MIN, SEC.SS)
-    double latitude;
-    // Latitude eg: N
-    char lat;
-    // Longitude eg: 08151.6838 (XXXYY.ZZKK.. DEG, MIN, SEC.SS)
-    double longitude;
-    // Longitude eg: W
-    char lon;
-    // Quality 0, 1, 2
-    uint8_t quality;
-    // Number of satellites: 1,2,3,4,5...
-    uint8_t satellites;
-    // Altitude eg: 280.2 (Meters above mean sea level)
-    double altitude;
-    // Hour 0-23
-    int hour;
-    // Minute 0-59
-    int minute;
-    // Second 0-59
-    int second;
+    double latitude;	// Latitude eg: 4124.8963 (XXYY.ZZKK.. DEG, MIN, SEC.SS)
+    char lat;		// Latitude eg: N
+    double longitude;	// Longitude eg: 08151.6838 (XXXYY.ZZKK.. DEG, MIN, SEC.SS)
+    char lon;		// Longitude eg: W
+    uint8_t quality;	// Quality 0, 1, 2
+    uint8_t satellites;	// Number of satellites: 1,2,3,4,5...
+    double altitude;	// Altitude eg: 280.2 (Meters above mean sea level)
+    int hour;		// Hour 0-23
+    int minute;		// Minute 0-59
+    int second;		// Second 0-59
 };
 typedef struct gpgga gpgga_t;
 
@@ -50,6 +40,9 @@ struct gprmc {
     int hour;
     int minute;
     int second;
+    int day;
+    int month;
+    int year;
 };
 typedef struct gprmc gprmc_t;
 
