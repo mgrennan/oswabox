@@ -43,5 +43,30 @@ To compile an individual example, just type
     cd src
     make {exampleName}
 
-The resulting appliation are written to the build directory.
+The resulting appliation are written to the build directory. To run an example:
+
+pi@station:~$  sudo build/oswabox -g
+
+The current conditions are:
+
+      Date: 2014-01-22
+      Time: 22:15:03
+  Latitude: 37.533287
+ Longitude: -95.621258
+  Altitude: 398.200000 m
+ Tempeture: 22.600000 c = 72.68 f
+  Humitity: 20.900000 %
+  Pressure: 971.530029 hPa =  28.69 inch of mercury
+Wind Speed: 0.000000 mph
+ Direction: 0.000000
+ Rain Fall: 0.000000 ipm
+  Device 0: 601.036316 ohms
+  Device 1: 21.526419 ohms
+  Device 2: 2063.679443 ohms
+  Device 3: 33662.593750 ohms
+  Device 4: 71.002319 ohms
+  Device 5: 26.266270 ohms
+  Device 6: 26.462805 ohms
+  Device 7: 39585.691406 ohms
+
 
