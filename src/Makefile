@@ -53,8 +53,8 @@ libgps:		libgps.a gps.o serial.o nmea.o
 position:	position.o
 	@$(CC) -o ${BUILD_DIR}/$@ position.o $(LDFLAGS) $(LDLIBS)
 
-oswabox:	oswabox.o
-	@$(CC) -o ${BUILD_DIR}/$@ oswabox.o $(LDFLAGS) $(LDLIBS)
+oswabox:	oswabox.o bmp085.o
+	@$(CC) -o ${BUILD_DIR}/$@ oswabox.o bmp085.o $(LDFLAGS) $(LDLIBS)
 
 .c.o:
 	@echo [CC] $<

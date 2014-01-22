@@ -4,17 +4,20 @@ Mark Grennan: - Software for OSWABox
   Contact me at mark@grennan.com
 https://github.com/mgrennan/oswabox
 
+Taylor Jones - hardware for OSWABox
+  Hardware hacker and weather geek.
+
 Gordon Henderson - for his work on wiringPI. This is the primary
-hardware library used in this project.
-https://github.com/WiringPi/WiringPi
+  hardware library used in this project.
+  https://github.com/WiringPi/WiringPi
 
 Walter Dal Mut - for his work on libgps. We use this library as 
-the primary gps interface for this code.
-https://github.com/wdalmut/libgps
+  the primary gps interface for this code.
+  https://github.com/wdalmut/libgps
 
 Goce Boshkovski - for the test/demonstrate communication with I2C peripherals
-on Rasperry Pi in C programming language.  
-https://github.com/positronic57/BMP085weatherStation
+  on Rasperry Pi in C programming language.  
+  https://github.com/positronic57/BMP085weatherStation
 
  
 Just a quick note to some people who've provided help, suggestions,
