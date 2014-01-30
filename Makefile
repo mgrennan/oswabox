@@ -7,6 +7,7 @@ MAKE=/usr/bin/make
 MKDIR=/bin/mkdir
 
 all:	init
+	export LANG=C
 	$(MAKE) -C src all
 
 init:

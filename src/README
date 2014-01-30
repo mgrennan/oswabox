@@ -1,0 +1,20 @@
+
+Coding ideas.
+
+Each device should have an example program to diminstrate how it is access.
+
+The programe should be named after the functions they preform, IE 
+'pressure' for the air pressue device.  Note the device may have other
+functions as well, IE temp to regulate the pressure reading that may also
+be readable. In that case command line options can/should be allowed to
+print these results as well.  
+
+The program should not produce a banner. It should print a USAGE if a command
+line option is needed or wrong.
+
+Raw data shold be the default results.  Command line options can be used
+to convert the raw value into other values IE entigrade to fahrenheit. 
+
+Other calculated values like dow point can also be provided with command
+line options.
+
