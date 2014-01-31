@@ -19,3 +19,4 @@ install:
 clean: 
 	$(RM) -Rf $(BUILD_DIR)
 	$(RM) -f src/*.o
+	$(RM) -f src/*.a

@@ -106,7 +106,7 @@ int main(int argc, char *argv[])
 		}
 
 		// display the average value
-		printf("Pin %d:%s  %09.2f = %06.4f volts = %010.2f Ohms\n", j, pin[j].name, avg, volt, value ) ;
+		printf("Pin %d:%s  % 9.2f = % 6.4f volts = % 10.2f ohms\n", j, pin[j].name, avg, volt, value ) ;
 
 	}
 
