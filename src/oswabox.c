@@ -158,28 +158,27 @@ int main (int argc, char **argv)
 		// Output the current observations in a human readable format.
 		//
 		case 'h':
-			printf("The current conditions are:\n\n");
 			if ( GPSflag )
 			{
 				printf("      Date: 20%02d-%02d-%02d\n",data.year, data.month, data.day);
 				printf("      Time: %02d:%02d:%02d\n",data.hour, data.minute, data.second);
-				printf("  Latitude: %lf\n",data.latitude);
-				printf(" Longitude: %lf\n",data.longitude);
-				printf("  Altitude: %lf m\n",data.altitude);
+				printf("  Latitude: % 11.2f\n",data.latitude);
+				printf(" Longitude: % 11.2f\n",data.longitude);
+				printf("  Altitude: % 11.2f m\n",data.altitude);
 			}
 			value = temp(1);
-			printf(" Tempeture: %lf c = %5.2f f\n", value, (value * 1.8) + 32);
-			printf("  Humitity: %lf %%\n", temp(0));
+			printf(" Tempeture: % 11.2f C\t= % 3.2f F\n", value, (value * 1.8) + 32);
+			printf("  Humitity: % 11.2f %%\n", temp(0));
 			value = pressure(0);
-			printf("  Pressure: %lf hPa = % 4.2f inch of mercury\n", value, value * 0.02953);
-			printf("Wind Speed: %lf mph\n Direction: %lf\n Rain Fall: %lf ipm\n",
+			printf("  Pressure: % 11.2f hPa\t= % 3.2f inch of mercury\n", value, value * 0.02953);
+			printf("Wind Speed: % 11.2f mph\n Direction: % 11.2f\n Rain Fall: % 11.2f ipm\n",
 				wind_speed(),
 				wind_direction(),
 				rain_fall()
 				);
 			for (c=0; c<8; c++)
 			{
-				printf("  Device %d: %lf ohms\n",c , read_adc_dev(c));
+				printf("  Device %d: % 11.2f ohms\n",c , read_adc_dev(c));
 			};
 			break;
 
