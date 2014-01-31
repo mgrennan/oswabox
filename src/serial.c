@@ -75,4 +75,3 @@ void serial_close(void)
 {
     close(uart0_filestream);
 }
-

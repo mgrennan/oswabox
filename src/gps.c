@@ -39,9 +39,9 @@ extern void gps_location(loc_t *coord) {
                 coord->latitude = gpgga.latitude;
                 coord->longitude = gpgga.longitude;
                 coord->altitude = gpgga.altitude;
-		coord->hour = gpgga.hour;
-		coord->minute = gpgga.minute;
-		coord->second = gpgga.second;
+                coord->hour = gpgga.hour;
+                coord->minute = gpgga.minute;
+                coord->second = gpgga.second;
 
 
                 status |= NMEA_GPGGA;
@@ -50,14 +50,14 @@ extern void gps_location(loc_t *coord) {
             case NMEA_GPRMC:
                 nmea_parse_gprmc(buffer, &gprmc);
 
-		coord->hour = gprmc.hour;
-		coord->minute = gprmc.minute;
-		coord->second = gprmc.second;
+                coord->hour = gprmc.hour;
+                coord->minute = gprmc.minute;
+                coord->second = gprmc.second;
                 coord->speed = gprmc.speed;
                 coord->course = gprmc.course;
-		coord->day = gprmc.day;
-		coord->month = gprmc.month;
-		coord->year = gprmc.year;
+                coord->day = gprmc.day;
+                coord->month = gprmc.month;
+                coord->year = gprmc.year;
 
                 status |= NMEA_GPRMC;
                 break;
@@ -93,4 +93,3 @@ double gps_deg_dec(double deg_point)
 
     return round(absdlat + (absmlat/60) + (absslat/3600)) /1000000;
 }
-

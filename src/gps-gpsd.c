@@ -18,7 +18,7 @@ struct gps_data_t gpsdata;
 int main(void)
 {
 	char time_str[32];
-	printf("Display the GPS information from gpsd.\n");
+	int done = 0;
 
 	if (gps_open(host, port, &gpsdata) != 0)
 	{
@@ -28,7 +28,7 @@ int main(void)
 
 	gps_stream(&gpsdata, WATCH_ENABLE, NULL);
 
-	for (;;)					 /* heart of the client */
+	while( ! done )	
 	{
 		if ( !gps_waiting(&gpsdata, 5000000) )
 		{
@@ -42,12 +42,13 @@ int main(void)
 			if( gpsdata.fix.mode > STATUS_NO_FIX )
 			{
 				unix_to_iso8601(gpsdata.fix.time, time_str, sizeof(time_str));
-				printf("Date: %s Lat: %lf lon: %lf Atl: %lf\n",
+				printf("       Date: %s\n  Longitude: %lf\n   Latitude: %lf\n   Altitude: %lf\n",
 					time_str,
-					gpsdata.fix.latitude,
 					gpsdata.fix.longitude,
+					gpsdata.fix.latitude,
 					gpsdata.fix.altitude
 				);
+				done = 1;
 			}
 		}
 	}

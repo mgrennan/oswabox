@@ -14,6 +14,7 @@
 #include <sys/ioctl.h>
 #include <linux/i2c-dev.h>
 #include <time.h>
+
 #include "bmp085.h"
 
 const long pressureConversionTime[]={ 5000000L, 8000000L, 14000000L, 26000000L };
@@ -126,7 +127,6 @@ void makeMeasurement(int fd, BMP085 *sensor)
 
 }
 
-
 void printCalibrationTable(BMP085 *sensor)
 {
 	const char *calCoefName[] = {"AC1","AC2","AC3","AC4","AC5","AC6","B1","B2","MB","MC","MD"};
@@ -148,3 +148,4 @@ void printCalibrationTable(BMP085 *sensor)
 	printf("\n");
 
 }
+

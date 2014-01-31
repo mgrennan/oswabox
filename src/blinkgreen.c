@@ -23,8 +23,6 @@
 
 int main (void)
 {
-	printf ("AirPi blinking the Green LED\n") ;
-
 	wiringPiSetup () ;
 	pinMode (LED, OUTPUT) ;
 

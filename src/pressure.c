@@ -9,7 +9,6 @@
  *
  */
 
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
@@ -18,6 +17,7 @@
 #include <sys/ioctl.h>
 #include <linux/i2c-dev.h>
 #include <math.h>
+
 #include "bmp085.h"
 
 extern int readCalibrationTable(int,BMP085 *);
@@ -60,31 +60,23 @@ int main(int argc, char **argv)
 	sensor->oss = mode;
 
 	fileDescriptor = open(device, O_RDWR);
-//	printf("Opening device %s ...\t\t\t",device);
         if (fileDescriptor<0)
         {
-//               printf("Failed!\n");
+                printf("\nFailed to open I2C port! Did you sudo?\n");
+		print_usage(argv[0]);
                 exit(1);
         }
-//	printf("Success\n");
 
-//	printf("Selecting i2c device with address 0x%02X ...\t",sensor->i2cAddress);
 	if (ioctl(fileDescriptor, I2C_SLAVE, sensor->i2cAddress)<0)
 	{
-//		printf("Failed!\n");
+		printf("Failed to select i2c device!\n");
 		exit(1);
 	}
-//	printf("Success\n");
 
 	
-//	printf("Feaching calibration table of the sensor ...\t");
-	if (readCalibrationTable(fileDescriptor,sensor))
+	if ( ! readCalibrationTable(fileDescriptor,sensor))
 	{
-//		printf("Success\n\n");
-	}
-	else 
-	{
-//		printf("Failed!\n");
+		printf("Failed to read calibration table!\n");
 		exit(1);
 	}
 
@@ -98,11 +90,11 @@ int main(int argc, char **argv)
 	{
 		makeMeasurement(fileDescriptor,sensor);
 		if (measureTemperature)
-			printf("Temperature = %.2f%cC\t= % .2f%cF\n",sensor->temperature,176,(sensor->temperature * 1.8) + 32,176);
+			printf("Temperature: %.2f C\t= % .2f F\n",sensor->temperature, (sensor->temperature * 1.8) + 32);
 		if (measurePressure)
-			printf("Pressure = %.2f hPa\t= % .2f inch of mercury\n",(float)sensor->pressure/100.0,(sensor->pressure /100.0) * 0.02953);
+			printf("   Pressure: %.2f hPa\t= % .2f inch of mercury\n",(float)sensor->pressure/100.0,(sensor->pressure /100.0) * 0.02953);
 		if (Altitude)
-			printf("Altitude = %.2f m\t= % .2f f\n",44330.0 * (1.0 - pow(sensor->pressure / seaLevelPressure, 0.1903)),
+			printf("   Altitude: %.2f m\t= % .2f f\n",44330.0 * (1.0 - pow(sensor->pressure / seaLevelPressure, 0.1903)),
 				44330.0 * (1.0 - pow(sensor->pressure / seaLevelPressure, 0.1903)) * 3.2808);
 	}
 
@@ -117,7 +109,8 @@ int main(int argc, char **argv)
 
 void print_usage(const char *prog)
 {
-        printf("Usage: %s [-adtTpm]\n", prog);
+	printf("\n\npressure - Read and print air pressure and temperature from BMP085 via I2C.\n\n");
+        printf("Usage: %s [-aAdtTpm]\n", prog);
         puts("  -a --address\t\t sets the I2C bus address of the BMP085 sensor;\n"
 	     "  -A --altitude\t\t calcluate and print the altitude;\n"
              "  -d --device\t\t set the I2C device (defualt is /dev/i2c-0);\n"

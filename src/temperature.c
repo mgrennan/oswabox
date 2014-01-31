@@ -91,7 +91,7 @@ static int read_dht22_dat()
         t /= 10.0;
         if ((dht22_dat[2] & 0x80) != 0)  t *= -1;
 
-        printf("Temperature: %5.2f c = %5.2f f\n", t, (t * 1.8) + 32) ;
+        printf("Temperature: %5.2f C\t= %5.2f F\n", t, (t * 1.8) + 32) ;
         printf("   Humidity: %5.2f %%\n", h);
     return 1;
   }

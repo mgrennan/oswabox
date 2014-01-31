@@ -19,7 +19,7 @@ int open_lockfile(const char *filename)
 
    if (fd < 0)
    {
-      printf("Failed to access lock file: %s\nerror: %s\n",
+      printf("Failed to access lock file: %s\nerror: %s\nDid you sudo?\n",
                 filename, strerror(errno));
       exit(EXIT_FAILURE);
    }
