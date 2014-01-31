@@ -19,12 +19,21 @@ BUILD_DIR = ../build
 
 OBJ	=	$(SRC:.c=.o)
 
-BINS	=	$(SRC:.c=) nmealib/lib/libnmea.a
+BINS	=	$(SRC:.c=)
+# nmealib/lib/libnmea.a 
 
-all:	libgps install blinkgreen wind rain mcp3008 temperature pressure \
+all:	start libgps.a blinkgreen wind rain mcp3008 temperature pressure \
 	rain wind gps-gpsd gps-serial oswabox
 	@echo "    $(BINS)" | fmt
 	@echo ""
+
+start:
+	@echo "Building OSWABox"
+
+libgps.a:	gps.o serial.o nmea.o
+	@$(AR) -rsc libgps.a gps.o serial.o nmea.o
+
+
 
 blinkgreen:	blinkgreen.o
 	@$(CC) -o ${BUILD_DIR}/$@ blinkgreen.o $(LDFLAGS) $(LDLIBS)
@@ -41,12 +50,8 @@ rain:		rain.o
 wind:		wind.o
 	@$(CC) -o ${BUILD_DIR}/$@ wind.o $(LDFLAGS) $(LDLIBS)
 
-
-libgps:		gps.o serial.o nmea.o
-	${AR} -rsc libgps.a gps.o serial.o nmea.o
-
 gps-gpsd:	gps-gpsd.o
-	@$(CC) -o ${BUILD_DIR}/$@ gps-gpsd.o $(LDFLAGS) $(LDLIBS)
+	@$(CC) -o ${BUILD_DIR}/$@ gps-gpsd.o libgps.a $(LDFLAGS) $(LDLIBS)
 
 gps-serial:	gps-serial.o
 	@$(CC) -o ${BUILD_DIR}/$@ gps-serial.o libgps.a $(LDFLAGS) $(LDLIBS)
@@ -54,17 +59,15 @@ gps-serial:	gps-serial.o
 mcp3008:	mcp3008.o
 	@$(CC) -o ${BUILD_DIR}/$@ mcp3008.o $(LDFLAGS) $(LDLIBS)
 
-
 oswabox:	oswabox.o bmp085.o
 	@$(CC) -o ${BUILD_DIR}/$@ oswabox.o libgps.a bmp085.o $(LDFLAGS) $(LDLIBS)
 
-
+install:
+	sudo cp ${BUILD_DIR}/$(BINS) /usr/bin
 .c.o:
 	@echo [CC] $<
 	@$(CC) -c $(CFLAGS) $< -o $@
 
-install:
-	sudo cp ./libgps.a /usr/lib/libgps.a
 
 
 # DO NOT DELETE
