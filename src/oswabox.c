@@ -23,7 +23,6 @@
 #include <wiringPi.h>
 #include "wiringPiSPI.h"
 #include <gertboard.h>
-#include <maxdetect.h>
 #include "gps.h"
 #include "bmp085.h"
 
@@ -41,16 +40,17 @@ void RainInterrupt(void);
 float wind_speed(void);
 float wind_direction(void);
 float rain_fall(void);
-float temp(int);
 float pressure(int);
 long readadc(int);
 float read_adc_dev(int);
+static uint8_t sizecvt(int);
+float temp(int);
 
 //
 // GPIO pin decrelations
 //
 #define LED 3					// The wiringPi pin for the LED
-#define RHT03_PIN  7			 	// The wiringPi pin for the RHT03
+#define DHT_PIN  7			 	// The wiringPi pin for the RHT03
 #define WIND_PIN 0				// The wiringPi pin for the wind speed
 #define RAIN_PIN 1				// The wiringPi pin for the rain guage
 
@@ -61,6 +61,7 @@ float read_adc_dev(int);
 #define rain_avg 1
 #define samples 50				// Number of AD samples to take
 #define wait 10					// Time delay between ADC reads
+#define MAXTIMINGS 85
 
 //
 // Program variables
@@ -69,7 +70,9 @@ int GPSflag = 0;			// use GPS
 int Bannerflag = 1;			// Print program Banner
 char output[20] = "";			// h=HUMAN, c=CSV, s=SQL
 char station[20] = "";			// Name the Station
+char gpstype[20] = "";			// s=serial device, d=serial device
 char table[64] = "";			// Table name used in SQL
+static int dht22_dat[5] = {0,0,0,0,0};	// storage for Temp device
 
 int main (int argc, char **argv)
 {
@@ -93,7 +96,10 @@ int main (int argc, char **argv)
 
 	if ( GPSflag )
 	{
-		gps_init();				 // Open serial port
+		if ( gpstype[0] = 's' ) 
+		{
+			gps_init();				 // Open serial port
+		}
 	}
 
 	//
@@ -218,6 +224,8 @@ void print_usage(const char *prog)
         printf("Usage: %s [-BGost]\n", prog);
 	puts( "  -b --Banner  - Turn off the banner\n"
               "  -g --GPS     - Turn on the GPS\n"
+	      "      s - Serial device\n"
+	      "      d - gps device\n" 
               "  -s --station - Station name\n"
               "  -t --table   - Table name used for SQL\n"
               "  -o --output  - [chq] output type\n"
@@ -240,7 +248,7 @@ void parse_opts(int argc, char *argv[])
         while (1) {
                 static const struct option lopts[] = {
                         { "Banner", no_argument, NULL, 'b' },
-                        { "GPS",no_argument, NULL, 'g' },
+                        { "GPS",required_argument, NULL, 'g' },
                         { "ouput", required_argument, NULL, 'o' },
                         { "station", required_argument, NULL, 's' },
                         { "table", required_argument, NULL, 't' },
@@ -248,7 +256,7 @@ void parse_opts(int argc, char *argv[])
                 };
                 int c;
 
-                c = getopt_long(argc, argv, "bgo:s:t:", lopts, NULL);
+                c = getopt_long(argc, argv, "bg:o:s:t:", lopts, NULL);
 
                 if (c == -1)
                         break;
@@ -260,6 +268,7 @@ void parse_opts(int argc, char *argv[])
                                 break;
                         case 'g':
                                 GPSflag = 1;
+				strcpy(gpstype, optarg);
                                 break;
                         case 'o':
                                 optarg[20] = 0;         // Limit the length of the input
@@ -341,45 +350,6 @@ float rain_fall(void)
 
         return ((RainCounter * 0.011) / rain_avg);
 }
-
-//
-// Return the air Humidity temp(0) or the temp in centagrade temp(1);
-//
-float temp(int flag)
-{
-        int temp, rh ;
-        int newTemp, newRh ;
-
-        temp = rh = newTemp = newRh = 0 ;
-
-        wiringPiSetup () ;
-        piHiPri       (55) ;
-
-        sleep (1) ;
-
-        readRHT03 (RHT03_PIN, &newTemp, &newRh) ;
-
-        if ((temp != newTemp) || (rh != newRh))
-        {
-                temp = newTemp ;
-                rh   = newRh ;
-        }
-
-        #ifdef DEBUG
-        printf ("Temperature: %5.1f c = %5.2f f\n", temp / 10.0, ((temp /10.0) * 1.8) + 32) ;
-        printf ("   Humidity: %5.1f%%\n", rh / 10.0, (rh / 10.0) * 3.2808) ;
-        #endif
-
-        if ( flag )
-        {
-                return temp / 10.0 ;
-        }
-        else
-        {
-                return rh / 10.0 ;
-        }
-}
-
 
 //
 // Program variables
@@ -534,5 +504,91 @@ float read_adc_dev(int pin)
 
         return value ;
 }
+
+static uint8_t sizecvt(const int read)
+{
+  /* digitalRead() and friends from wiringpi are defined as returning a value
+  < 256. However, they are returned as int() types. This is a safety function */
+
+  if (read > 255 || read < 0)
+  {
+    printf("Invalid data from wiringPi library\n");
+    exit(EXIT_FAILURE);
+  }
+  return (uint8_t)read;
+}
+
+//
+// Return the air Humidity temp(0) or the temp in centagrade temp(1);
+//
+float temp(int temp)
+{
+  uint8_t laststate = HIGH;
+  uint8_t counter = 0;
+  uint8_t j = 0, i;
+
+  dht22_dat[0] = dht22_dat[1] = dht22_dat[2] = dht22_dat[3] = dht22_dat[4] = 0;
+
+  // pull pin down for 18 milliseconds
+  pinMode(DHT_PIN, OUTPUT);
+  digitalWrite(DHT_PIN, HIGH);
+  delay(10);
+  digitalWrite(DHT_PIN, LOW);
+  delay(18);
+  // then pull it up for 40 microseconds
+  digitalWrite(DHT_PIN, HIGH);
+  delayMicroseconds(40);
+  // prepare to read the pin
+  pinMode(DHT_PIN, INPUT);
+
+  // detect change and read data
+  for ( i=0; i< MAXTIMINGS; i++) {
+    counter = 0;
+    while (sizecvt(digitalRead(DHT_PIN)) == laststate) {
+      counter++;
+      delayMicroseconds(1);
+      if (counter == 255) {
+        break;
+      }
+    }
+    laststate = sizecvt(digitalRead(DHT_PIN));
+
+    if (counter == 255) break;
+
+    // ignore first 3 transitions
+    if ((i >= 4) && (i%2 == 0)) {
+      // shove each bit into the storage bytes
+      dht22_dat[j/8] <<= 1;
+      if (counter > 16)
+        dht22_dat[j/8] |= 1;
+      j++;
+    }
+  }
+
+  // check we read 40 bits (8bit x 5 ) + verify checksum in the last byte
+  // print it out if data is good
+  if ((j >= 40) && (dht22_dat[4] == ((dht22_dat[0] + dht22_dat[1] + dht22_dat[2] + dht22_dat[3]) & 0xFF)) ) {
+
+        float t, h;
+        h = (float)dht22_dat[0] * 256 + (float)dht22_dat[1];
+        h /= 10;
+        t = (float)(dht22_dat[2] & 0x7F)* 256 + (float)dht22_dat[3];
+        t /= 10.0;
+        if ((dht22_dat[2] & 0x80) != 0)  t *= -1;
+
+        #ifdef DEBUG
+        printf ("Temperature: %5.1f c = %5.2f f\n", t, (t * 1.8) + 32) ;
+        printf ("   Humidity: %5.1f%%\n", h, h * 3.2808) ;
+        #endif
+
+	if ( temp ) 
+		return( t );
+	else 
+		return ( h );
+  }
+  return ( 0.0 );
+
+}
+
 
 
