@@ -22,7 +22,7 @@ OBJ	=	$(SRC:.c=.o)
 BINS	=	$(SRC:.c=) nmealib/lib/libnmea.a
 
 all:	libgps install blinkgreen wind rain mcp3008 temperature pressure \
-	rain wind gps-serial oswabox
+	rain wind gps-gpsd gps-serial oswabox
 	@echo "    $(BINS)" | fmt
 	@echo ""
 
@@ -56,7 +56,7 @@ mcp3008:	mcp3008.o
 
 
 oswabox:	oswabox.o bmp085.o
-	@$(CC) -o ${BUILD_DIR}/$@ oswabox.o bmp085.o $(LDFLAGS) $(LDLIBS)
+	@$(CC) -o ${BUILD_DIR}/$@ oswabox.o libgps.a bmp085.o $(LDFLAGS) $(LDLIBS)
 
 
 .c.o:
