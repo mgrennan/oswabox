@@ -91,8 +91,8 @@ static int read_dht22_dat()
         t /= 10.0;
         if ((dht22_dat[2] & 0x80) != 0)  t *= -1;
 
-        printf("Temperature: %5.2f C\t= %5.2f F\n", t, (t * 1.8) + 32) ;
-        printf("   Humidity: %5.2f %%\n", h);
+        printf("Temperature: % 11.4f C\t= % 5.2f F\n", t, (t * 1.8) + 32) ;
+        printf("   Humidity: % 11.4f %%\n", h);
     return 1;
   }
   else
@@ -134,6 +134,7 @@ void print_usage(const char *prog)
 {
 	puts("\n\ndtemperature - Read and print temperature and humidity from DHT22 via one-wire interface\n\n"); 
         printf("Usage: %s [-p]\n", prog);
+	puts("  -h --help\t print this help message\n");
         puts("  -p --pin\t\t wireinPi pin number. Default 7;\n");
         exit(1);
 }
@@ -142,17 +143,21 @@ void parse_opts(int argc, char *argv[])
 {
         while (1) {
                 static const struct option lopts[] = {
+			{ "help", no_argument, NULL, 'h' },
                         { "pin", required_argument, NULL, 'p' },
                         { NULL, 0, 0, 0 },
                 };
                 int c;
 
-                c = getopt_long(argc, argv, "p:", lopts, NULL);
+                c = getopt_long(argc, argv, "hp:", lopts, NULL);
 
                 if (c == -1)
                         break;
 
                 switch (c) {
+		case 'h':
+			print_usage(argv[0]);
+			break;
                 case 'p':
                         {
                                 DHTPIN = atoi(optarg);

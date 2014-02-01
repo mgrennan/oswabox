@@ -148,4 +148,3 @@ void printCalibrationTable(BMP085 *sensor)
 	printf("\n");
 
 }
-

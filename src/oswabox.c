@@ -49,30 +49,33 @@ float temp(int);
 //
 // GPIO pin decrelations
 //
-#define LED 3					// The wiringPi pin for the LED
-#define DHT_PIN  7			 	// The wiringPi pin for the RHT03
-#define WIND_PIN 0				// The wiringPi pin for the wind speed
-#define RAIN_PIN 1				// The wiringPi pin for the rain guage
+#define LED 3					 // The wiringPi pin for the LED
+#define DHT_PIN  7				 // The wiringPi pin for the RHT03
+#define WIND_PIN 0				 // The wiringPi pin for the wind speed
+#define RAIN_PIN 1				 // The wiringPi pin for the rain guage
 
 //
 // Program definations
 //
-#define wind_avg 1				// Number of seconds to average for wind speed
+#define wind_avg 1				 // Number of seconds to average for wind speed
 #define rain_avg 1
-#define samples 50				// Number of AD samples to take
-#define wait 10					// Time delay between ADC reads
+#define samples 50				 // Number of AD samples to take
+#define wait 10					 // Time delay between ADC reads
 #define MAXTIMINGS 85
 
 //
 // Program variables
 //
-int GPSflag = 0;			// use GPS
-int Bannerflag = 1;			// Print program Banner
-char output[20] = "";			// h=HUMAN, c=CSV, s=SQL
-char station[20] = "";			// Name the Station
-char gpstype[20] = "";			// s=serial device, d=serial device
-char table[64] = "";			// Table name used in SQL
-static int dht22_dat[5] = {0,0,0,0,0};	// storage for Temp device
+int GPSflag = 0;				 // use GPS
+int Bannerflag = 1;				 // Print program Banner
+char output[20] = "";			 // h=HUMAN, c=CSV, s=SQL
+char station[20] = "";			 // Name the Station
+char gpstype[20] = "";			 // s=serial device, d=serial device
+char table[64] = "";			 // Table name used in SQL
+static uint8_t dht22_dat[5] =		 // storage for Temp device
+{
+	0,0,0,0,0
+};
 
 int main (int argc, char **argv)
 {
@@ -83,9 +86,9 @@ int main (int argc, char **argv)
 
 	opterr = 0;
 
-	parse_opts(argc,argv);  
+	parse_opts(argc,argv);
 
-	if (output[0] == 0)			// make the defalt ouput type Human readable
+	if (output[0] == 0)			 // make the defalt ouput type Human readable
 		strcpy(output, "human");
 
 	//
@@ -96,9 +99,9 @@ int main (int argc, char **argv)
 
 	if ( GPSflag )
 	{
-		if ( gpstype[0] = 's' ) 
+		if ( gpstype[0] = 's' )
 		{
-			gps_init();				 // Open serial port
+			gps_init();			 // Open serial port
 		}
 	}
 
@@ -126,7 +129,9 @@ int main (int argc, char **argv)
 	if ( GPSflag )
 	{
 		gps_location(&data);	 // Read and parse the GPS info
-	} else {
+	}
+	else
+	{
 
 		// Read data time from system
 	}
@@ -147,44 +152,44 @@ int main (int argc, char **argv)
 				printf("%lf,",data.altitude);
 			}
 			printf("%6.2f,%6.2f,%6.2f,%6.2f,%6.2f",
-				temp(1), temp(0),pressure(0),wind_speed(),rain_fall() );
+				temp(1), temp(0), pressure(0), wind_speed(), rain_fall() );
 			for (c=0; c<8; c++)
 			{
 				printf(",%6.4f", read_adc_dev(c));
 			}
 			break;
 
-		//
-		// Output the current observations in a human readable format.
-		//
+			//
+			// Output the current observations in a human readable format.
+			//
 		case 'h':
 			if ( GPSflag )
 			{
-				printf("      Date: 20%02d-%02d-%02d\n",data.year, data.month, data.day);
-				printf("      Time: %02d:%02d:%02d\n",data.hour, data.minute, data.second);
-				printf("  Latitude: % 11.2f\n",data.latitude);
-				printf(" Longitude: % 11.2f\n",data.longitude);
-				printf("  Altitude: % 11.2f m\n",data.altitude);
+				printf("       Date: 20%02d-%02d-%02d\n",data.year, data.month, data.day);
+				printf("       Time: %02d:%02d:%02d\n",data.hour, data.minute, data.second);
+				printf("   Latitude: % 11.4f\n",data.latitude);
+				printf("  Longitude: % 11.4f\n",data.longitude);
+				printf("   Altitude: % 11.4f m\n",data.altitude);
 			}
 			value = temp(1);
-			printf(" Tempeture: % 11.2f C\t= % 3.2f F\n", value, (value * 1.8) + 32);
-			printf("  Humitity: % 11.2f %%\n", temp(0));
+			printf("Temperature: % 11.4f C\t= % 3.2f F\n", value, (value * 1.8) + 32);
+			printf("   Humitity: % 11.4f %%\n", temp(0));
 			value = pressure(0);
-			printf("  Pressure: % 11.2f hPa\t= % 3.2f inch of mercury\n", value, value * 0.02953);
-			printf("Wind Speed: % 11.2f mph\n Direction: % 11.2f\n Rain Fall: % 11.2f ipm\n",
+			printf("   Pressure: % 11.4f hPa\t= % 3.2f inch of mercury\n", value, value * 0.02953);
+			printf(" Wind Speed: % 11.4f mph\n  Direction: % 11.4f\n  Rain Fall: % 11.4f ipm\n",
 				wind_speed(),
 				wind_direction(),
 				rain_fall()
 				);
 			for (c=0; c<8; c++)
 			{
-				printf("  Device %d: % 11.2f ohms\n",c , read_adc_dev(c));
+				printf("   Device %d: % 11.4f ohms\n",c , read_adc_dev(c));
 			};
 			break;
 
-		//
-		// Ouput a text line with an SQL insert statment
-		//
+			//
+			// Ouput a text line with an SQL insert statment
+			//
 		case 's':
 			printf("INSERT INTO %s ( Station, Datetime, Temperature, Pressure, ", table);
 			printf("Relative_Humidity, Wind_Speed, Wind_Direction, Rain, ");
@@ -194,12 +199,18 @@ int main (int argc, char **argv)
 			printf("\"%s\",", station);
 			printf("\"20%02d-%02d-%02d ", data.year, data.month, data.day);
 			printf("%02d:%02d:%02d\"", data.hour, data.minute, data.second);
-			printf(",%6.4f", temp(1));		// Temperature
-			printf(",%6.4f", pressure(0));		// Pressure
-			printf(",%6.4f", temp(0));		// Relative_Humidity
-			printf(",%6.4f", wind_speed()); 	// Wind Speed
-			printf(",%6.4f", wind_direction());	// Wind Direction
-			printf(",%6.4f", rain_fall());		// Rain Fall
+								 // Temperature
+			printf(",%6.4f", temp(1));
+								 // Pressure
+			printf(",%6.4f", pressure(0));
+								 // Relative_Humidity
+			printf(",%6.4f", temp(0));
+								 // Wind Speed
+			printf(",%6.4f", wind_speed());
+								 // Wind Direction
+			printf(",%6.4f", wind_direction());
+								 // Rain Fall
+			printf(",%6.4f", rain_fall());
 			for (c=0; c<8; c++)
 			{
 				printf(",%6.4f", read_adc_dev(c));
@@ -218,75 +229,75 @@ int main (int argc, char **argv)
 void print_usage(const char *prog)
 {
 
-//	printf("Open Source Weather and Air quality Box (OSWABox)\n");
-//	printf(" - Version %4.2f\n\n",Version);
-        printf("Usage: %s [-BGost]\n", prog);
+	printf("Open Source Weather and Air quality Box (OSWABox)\n");
+	printf(" - Version %4.2f\n\n",Version);
+	printf("Usage: %s [-BGost]\n", prog);
 	puts( "  -b --Banner  - Turn off the banner\n"
-              "  -g --GPS     - Turn on the GPS\n"
-	      "      s - Serial device\n"
-	      "      d - gps device\n" 
-              "  -s --station - Station name\n"
-              "  -t --table   - Table name used for SQL\n"
-              "  -o --output  - [chq] output type\n"
-              "      c - CSV output\n"
-              "      h - Human readable output\n"
-              "      s - SQL output\n");
-
-//             "  -m --mode\t\t sets the measurement mode. Default value 1 = STANDARD. Allowed values:\n"
-//             "                                            0 = ULTRA LOW POWER\n"
-//             "                                            1 = STANDARD\n"
-//             "                                            2 = HIGH RESOLUTION\n"
-//             "                                            3 = ULTRA HIGH RESOLUTION\n");
-
-        exit(1);
+		"  -g --GPS     - Turn on the GPS\n"
+		"      s - Serial device\n"
+		"      d - gps device\n"
+		"  -h --help    - print this help message\n"
+		"  -s --station - Station name\n"
+		"  -t --table   - Table name used for SQL\n"
+		"  -o --output  - [chq] output type\n"
+		"      c - CSV output\n"
+		"      h - Human readable output\n"
+		"      s - SQL output\n");
+	exit(1);
 }
 
 
 void parse_opts(int argc, char *argv[])
 {
-        while (1) {
-                static const struct option lopts[] = {
-                        { "Banner", no_argument, NULL, 'b' },
-                        { "GPS",required_argument, NULL, 'g' },
-                        { "ouput", required_argument, NULL, 'o' },
-                        { "station", required_argument, NULL, 's' },
-                        { "table", required_argument, NULL, 't' },
-                        { NULL, 0, 0, 0 },
-                };
-                int c;
+	while (1)
+	{
+		static const struct option lopts[] =
+		{
+			{ "Banner", no_argument, NULL, 'b' },
+			{ "GPS",required_argument, NULL, 'g' },
+			{ "help", no_argument, NULL, 'h' },
+			{ "ouput", required_argument, NULL, 'o' },
+			{ "station", required_argument, NULL, 's' },
+			{ "table", required_argument, NULL, 't' },
+			{ NULL, 0, 0, 0 },
+		};
+		int c;
 
-                c = getopt_long(argc, argv, "bg:o:s:t:", lopts, NULL);
+		c = getopt_long(argc, argv, "bg:ho:s:t:", lopts, NULL);
 
-                if (c == -1)
-                        break;
+		if (c == -1)
+			break;
 
 		switch (c)
-                {
-                        case 'b':
-                                Bannerflag = 0;
-                                break;
-                        case 'g':
-                                GPSflag = 1;
+		{
+			case 'b':
+				Bannerflag = 0;
+				break;
+			case 'g':
+				GPSflag = 1;
 				strcpy(gpstype, optarg);
-                                break;
-                        case 'o':
-                                optarg[20] = 0;         // Limit the length of the input
-                                strcpy(output, optarg);
-                                break;
-                        case 's':
-                                optarg[20] = 0;         // Limit the length of the input
-                                strcpy(station, optarg);
-                                break;
-                        case 't':
-                                optarg[64] = 0;         // Limit the length of the input
-                                strcpy(table, optarg);
-                                break;
-                        default:
-                                print_usage(argv[0]);
-                                break;
-                }
+				break;
+			case 'h':
+				print_usage(argv[0]);
+				break;
+			case 'o':
+				optarg[20] = 0;	 // Limit the length of the input
+				strcpy(output, optarg);
+				break;
+			case 's':
+				optarg[20] = 0;	 // Limit the length of the input
+				strcpy(station, optarg);
+				break;
+			case 't':
+				optarg[64] = 0;	 // Limit the length of the input
+				strcpy(table, optarg);
+				break;
+			default:
+				print_usage(argv[0]);
+				break;
+		}
 
-        }
+	}
 }
 
 
@@ -296,59 +307,62 @@ void parse_opts(int argc, char *argv[])
 volatile int WindCounter = 0;
 volatile int RainCounter = 0;
 
-
 // WindInterrupt:  called every time a Wind event occurs
 void WindInterrupt(void)
 {
-        WindCounter++;
+	WindCounter++;
 }
 
 
 // RainInterrupt:  called every time a Wind event occurs
 void RainInterrupt(void)
 {
-        RainCounter++;
+	RainCounter++;
 }
+
 
 // Return the current wind speed in mph
 float wind_speed(void)
 {
-        WindCounter = 0;
-        delay( wind_avg * 1000 );        // Take an average
+	WindCounter = 0;
+	delay( wind_avg * 1000 );	 // Take an average
 
-        /* Wind is 1.492 mph per event */
-        #ifdef DEBUG
-        printf( "%4.2f\n", (WindCounter * 1.492) / wind_avg);
-        #endif
+	/* Wind is 1.492 mph per event */
+	#ifdef DEBUG
+	printf( "%4.2f\n", (WindCounter * 1.492) / wind_avg);
+	#endif
 
-        return ((WindCounter * 1.492) / wind_avg);
+	return ((WindCounter * 1.492) / wind_avg);
 
 }
+
 
 //
 // Return the current wind direction in degrees
 //
 float wind_direction(void)
 {
-        return 0.0;
+	return 0.0;
 }
+
 
 //
 // Return the rain fall in inches for the last minute
 //
 float rain_fall(void)
 {
-        RainCounter = 0;
+	RainCounter = 0;
 
-        delay( rain_avg * 1000 );        // Take an average
+	delay( rain_avg * 1000 );	 // Take an average
 
-        /* event rate is 0.011 inches per event */
-        #ifdef DEBUG
-        printf( "%4.2f\n", (RainCounter * 0.011) / rain_avg );
-        #endif
+	/* event rate is 0.011 inches per event */
+	#ifdef DEBUG
+	printf( "%4.2f\n", (RainCounter * 0.011) / rain_avg );
+	#endif
 
-        return ((RainCounter * 0.011) / rain_avg);
+	return ((RainCounter * 0.011) / rain_avg);
 }
+
 
 //
 // Program variables
@@ -362,45 +376,45 @@ int mode = 1;
 //
 float pressure(int temp)
 {
-        int fileDescriptor;
+	int fileDescriptor;
 
-        BMP085 *sensor;
-        sensor = (BMP085 *) malloc(sizeof(BMP085));
-        
-        sensor->i2cAddress = i2cAddress;
-        sensor->oss = 3;
+	BMP085 *sensor;
+	sensor = (BMP085 *) malloc(sizeof(BMP085));
 
-        fileDescriptor = open(device, O_RDWR);
-        if (fileDescriptor<0)
-        {
-                printf("Failed to open i2c device!\n");
-                exit(1);
-        }
+	sensor->i2cAddress = i2cAddress;
+	sensor->oss = 3;
 
-        if (ioctl(fileDescriptor, I2C_SLAVE, sensor->i2cAddress)<0)
-        {
-                printf("Failed to select i2c device!\n");
-                exit(1);
-        }
+	fileDescriptor = open(device, O_RDWR);
+	if (fileDescriptor<0)
+	{
+		printf("Failed to open i2c device!\n");
+		exit(1);
+	}
 
-        
-        if ( ! readCalibrationTable(fileDescriptor,sensor))
-        {
-                printf("Failed to read calibration table!\n");
-                exit(1);
-        }
+	if (ioctl(fileDescriptor, I2C_SLAVE, sensor->i2cAddress)<0)
+	{
+		printf("Failed to select i2c device!\n");
+		exit(1);
+	}
+
+	if ( ! readCalibrationTable(fileDescriptor,sensor))
+	{
+		printf("Failed to read calibration table!\n");
+		exit(1);
+	}
 
 	makeMeasurement(fileDescriptor,sensor);
 
-        free(sensor);
+	free(sensor);
 
-        close(fileDescriptor);
+	close(fileDescriptor);
 
 	if( temp )
 		return sensor->temperature;
 	else
 		return sensor->pressure/100.0;
 }
+
 
 /*
 // Read the ADC data fromt the SPI buss
@@ -418,20 +432,21 @@ float pressure(int temp)
 */
 long readadc(int adcnum)
 {
-        uint8_t buff[3] = { 0b00000001, 0b10000000, 0b00000000 }
-        ;
-        long adc;
+	uint8_t buff[3] = { 0b00000001, 0b10000000, 0b00000000 }
+	;
+	long adc;
 
-        buff[1] += adcnum << 4 ;
+	buff[1] += adcnum << 4 ;
 
-        wiringPiSPIDataRW(0, buff, 3);
+	wiringPiSPIDataRW(0, buff, 3);
 
-        //      adc = ((buff[1] & 3) << 8) + buff[2];
-                                                                 // 10 bits of data
-        adc = ((buff[1] * 256 ) + buff[2]) & 0b1111111111 ;
+	//      adc = ((buff[1] & 3) << 8) + buff[2];
+								 // 10 bits of data
+	adc = ((buff[1] * 256 ) + buff[2]) & 0b1111111111 ;
 
-        return adc;
+	return adc;
 }
+
 
 /*
 // Read the Analog to Digital Converter (ADC) and return the current
@@ -441,153 +456,161 @@ long readadc(int adcnum)
 */
 float read_adc_dev(int pin)
 {
-        int i ;
-        uint16_t ob ;
-        float tot, avg, volt, value ;
-        /*
-        //   vcc ----R1--+--R2---- GND   If device is R1 its a Pull-Up
-        //               |               If device is R2 its a Pull-Down
-        //              ADC
-        */
-        struct device
-        {
-                int pullup ;                     // 1 = device pulls up the Pin
-                float refvolt ;                  // reverence voltage
-                float resistance ;               // resistence in ohms
-                char *name ;                     // device name
-        }
-        dev[8] =
-        {
-                { 0, 3.3,  10000.0, "LDR light sensor" },
-                { 0, 3.3,  22000.0, "TGS2600         " },
-                { 0, 3.3,  10000.0, "MiSC-2710       " },
-                { 0, 3.3, 100000.0, "MiCS=5525       " },
-                { 0, 3.3,  01000.0, "Sound           " },
-                { 0, 5.0,  10000.0, "Wind Direction  " },
-                { 0, 3.3,  10000.0, "Open            " },
-                { 0, 3.3,    990.0, "Test Voltage    " }
-        } ;
+	int i ;
+	uint16_t ob ;
+	float tot, avg, volt, value ;
+	/*
+	//   vcc ----R1--+--R2---- GND   If device is R1 its a Pull-Up
+	//               |               If device is R2 its a Pull-Down
+	//              ADC
+	*/
+	struct device
+	{
+		int pullup ;			 // 1 = device pulls up the Pin
+		float refvolt ;			 // reverence voltage
+		float resistance ;		 // resistence in ohms
+		char *name ;			 // device name
+	}
+	dev[8] =
+	{
+		{ 0, 3.3,  10000.0, "LDR light sensor" },
+		{ 0, 3.3,  22000.0, "TGS2600         " },
+		{ 0, 3.3,  10000.0, "MiSC-2710       " },
+		{ 0, 3.3, 100000.0, "MiCS=5525       " },
+		{ 0, 3.3,  01000.0, "Sound           " },
+		{ 0, 5.0,  10000.0, "Wind Direction  " },
+		{ 0, 3.3,  10000.0, "Open            " },
+		{ 0, 3.3,    990.0, "Test Voltage    " }
+	} ;
 
-                                                                 // initialize the WiringPi API channel and speed
-        if (wiringPiSPISetup (0, 1500000) < 0)
-                return -1 ;                              // the mcp3008 wants clock speed between 1.35 and 3.6Mz
+								 // initialize the WiringPi API channel and speed
+	if (wiringPiSPISetup (0, 1500000) < 0)
+		return -1 ;				 // the mcp3008 wants clock speed between 1.35 and 3.6Mz
 
-        ob = 0;
-        tot = 0;
-        for (i=0; i<samples; i++)        // Read samples
-        {
-                ob =  readadc(pin);
-                tot = tot + (ob * 1.0) ;
-                delay( wait ) ;
-        }
-        avg = tot / samples ;            // calculate the average of the readings
+	ob = 0;
+	tot = 0;
+	for (i=0; i<samples; i++)	 // Read samples
+	{
+		ob =  readadc(pin);
+		tot = tot + (ob * 1.0) ;
+		delay( wait ) ;
+	}
+	avg = tot / samples ;		 // calculate the average of the readings
 
-        // See http://en.wikipedia.org/wiki/Voltage_divider
+	// See http://en.wikipedia.org/wiki/Voltage_divider
 
-                                                                 // calculate the average voltage
-        volt = (dev[pin].refvolt / 1023.0) * avg ;
-        // reference voltage / 10bit AD (1023) * reading
+								 // calculate the average voltage
+	volt = (dev[pin].refvolt / 1023.0) * avg ;
+	// reference voltage / 10bit AD (1023) * reading
 
-        if ( dev[pin].pullup )           // If this is a pullup resister
-        {
-                value = (( dev[pin].resistance * dev[pin].refvolt ) / volt ) - dev[pin].resistance ;
-        }
-        else                                             // this is a pulldown resister
-        {
-                value = dev[pin].resistance / (( dev[pin].refvolt / volt ) - 1 ) ;
-        }
+	if ( dev[pin].pullup )		 // If this is a pullup resister
+	{
+		value = (( dev[pin].resistance * dev[pin].refvolt ) / volt ) - dev[pin].resistance ;
+	}
+	else						 // this is a pulldown resister
+	{
+		value = dev[pin].resistance / (( dev[pin].refvolt / volt ) - 1 ) ;
+	}
 
-        #ifdef DEBUG                             /* display the average value */
-        printf("Pin %d:%s  %09.2f = %06.4f volts = %010.2f Ohms\n", pin, dev[pin].name, avg, volt, value ) ;
-        #endif                                           /* DEBUG */
+	#ifdef DEBUG				 /* display the average value */
+	printf("Pin %d:%s  %09.2f = %06.4f volts = %010.2f Ohms\n", pin, dev[pin].name, avg, volt, value ) ;
+	#endif						 /* DEBUG */
 
-        return value ;
+	return value ;
 }
+
 
 static uint8_t sizecvt(const int read)
 {
-  /* digitalRead() and friends from wiringpi are defined as returning a value
-  < 256. However, they are returned as int() types. This is a safety function */
+	/* digitalRead() and friends from wiringpi are defined as returning a value
+	< 256. However, they are returned as int() types. This is a safety function */
 
-  if (read > 255 || read < 0)
-  {
-    printf("Invalid data from wiringPi library\n");
-    exit(EXIT_FAILURE);
-  }
-  return (uint8_t)read;
+	if (read > 255 || read < 0)
+	{
+		printf("Invalid data from wiringPi library\n");
+		exit(EXIT_FAILURE);
+	}
+	return (uint8_t)read;
 }
+
 
 //
 // Return the air Humidity temp(0) or the temp in centagrade temp(1);
 //
 float temp(int temp)
 {
-  uint8_t laststate = HIGH;
-  uint8_t counter = 0;
-  uint8_t j = 0, i;
+	uint8_t laststate = HIGH;
+	uint8_t counter = 0;
+	uint8_t j = 0, i;
+	int gooddata = 0;
 
-  dht22_dat[0] = dht22_dat[1] = dht22_dat[2] = dht22_dat[3] = dht22_dat[4] = 0;
+	while ( ! gooddata )
+	{
+	dht22_dat[0] = dht22_dat[1] = dht22_dat[2] = dht22_dat[3] = dht22_dat[4] = 0;
 
-  // pull pin down for 18 milliseconds
-  pinMode(DHT_PIN, OUTPUT);
-  digitalWrite(DHT_PIN, HIGH);
-  delay(10);
-  digitalWrite(DHT_PIN, LOW);
-  delay(18);
-  // then pull it up for 40 microseconds
-  digitalWrite(DHT_PIN, HIGH);
-  delayMicroseconds(40);
-  // prepare to read the pin
-  pinMode(DHT_PIN, INPUT);
+    // pull pin down for 18 milliseconds
+	pinMode(DHT_PIN, OUTPUT);
+	digitalWrite(DHT_PIN, HIGH);
+	delay(10);
+	digitalWrite(DHT_PIN, LOW);
+	delay(18);
 
-  // detect change and read data
-  for ( i=0; i< MAXTIMINGS; i++) {
-    counter = 0;
-    while (sizecvt(digitalRead(DHT_PIN)) == laststate) {
-      counter++;
-      delayMicroseconds(1);
-      if (counter == 255) {
-        break;
-      }
-    }
-    laststate = sizecvt(digitalRead(DHT_PIN));
+    // then pull it up for 40 microseconds
+	digitalWrite(DHT_PIN, HIGH);
+	delayMicroseconds(40);
 
-    if (counter == 255) break;
+    // prepare to read the pin
+	pinMode(DHT_PIN, INPUT);
 
-    // ignore first 3 transitions
-    if ((i >= 4) && (i%2 == 0)) {
-      // shove each bit into the storage bytes
-      dht22_dat[j/8] <<= 1;
-      if (counter > 16)
-        dht22_dat[j/8] |= 1;
-      j++;
-    }
-  }
+    // detect change and read data
+	for ( i=0; i< MAXTIMINGS; i++)
+	{
+		counter = 0;
+		while (sizecvt(digitalRead(DHT_PIN)) == laststate)
+		{
+			counter++;
+			delayMicroseconds(1);
+			if (counter == 255)
+			{
+				break;
+			}
+		}
+		laststate = sizecvt(digitalRead(DHT_PIN));
 
-  // check we read 40 bits (8bit x 5 ) + verify checksum in the last byte
-  // print it out if data is good
-  if ((j >= 40) && (dht22_dat[4] == ((dht22_dat[0] + dht22_dat[1] + dht22_dat[2] + dht22_dat[3]) & 0xFF)) ) {
+		if (counter == 255) break;
 
-        float t, h;
-        h = (float)dht22_dat[0] * 256 + (float)dht22_dat[1];
-        h /= 10;
-        t = (float)(dht22_dat[2] & 0x7F)* 256 + (float)dht22_dat[3];
-        t /= 10.0;
-        if ((dht22_dat[2] & 0x80) != 0)  t *= -1;
+		// ignore first 3 transitions
+		if ((i >= 4) && (i%2 == 0))
+		{
+			// shove each bit into the storage bytes
+			dht22_dat[j/8] <<= 1;
+			if (counter > 16)
+				dht22_dat[j/8] |= 1;
+			j++;
+		}
+	}
 
-        #ifdef DEBUG
-        printf ("Temperature: %5.1f c = %5.2f f\n", t, (t * 1.8) + 32) ;
-        printf ("   Humidity: %5.1f%%\n", h, h * 3.2808) ;
-        #endif
+    // check we read 40 bits (8bit x 5 ) + verify checksum in the last byte
+    // print it out if data is good
 
-	if ( temp ) 
+		gooddata = (j >= 40) && (dht22_dat[4] == ((dht22_dat[0] + dht22_dat[1] + dht22_dat[2] + dht22_dat[3]) & 0xFF)) ;
+	}
+
+	float t, h;
+		h = (float)dht22_dat[0] * 256 + (float)dht22_dat[1];
+		h /= 10;
+		t = (float)(dht22_dat[2] & 0x7F)* 256 + (float)dht22_dat[3];
+		t /= 10.0;
+		if ((dht22_dat[2] & 0x80) != 0)  t *= -1;
+
+		#ifdef DEBUG
+		printf ("DEBUG: Temperature: %5.1f c = %5.2f f\n", t, (t * 1.8) + 32) ;
+		printf ("DEBUG:   Humidity: %5.1f%%\n", h, h * 3.2808) ;
+		#endif
+
+		if ( temp )
 		return( t );
-	else 
+		else
 		return ( h );
-  }
-  return ( 0.0 );
 
 }
-
-
-

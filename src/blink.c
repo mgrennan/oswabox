@@ -18,7 +18,9 @@
 */
 #include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <getopt.h>
+#include <math.h>
 
 #include <wiringPi.h>
 
@@ -51,11 +53,11 @@ int main (int argc, char *argv[])
 
 void print_usage(const char *prog)
 {
-        puts("\n\nblink.c - Blink the LED\n\n");
+        puts("\nblink - Blink the LED\n");
         printf("Usage: %s [-chp]\n", prog);
-	puts("  -c --count\t number of times to blink - Default 4\n");
-        puts("  -h --help\t print this help message\n");
-	puts("  -p --pin\t the GPIO pin connected to the LED - Default 3\n");
+	puts("  -c --count\t number of times to blink - Default 4");
+        puts("  -h --help\t print this help message");
+	puts("  -p --pin\t the GPIO pin connected to the LED - Default 3");
         exit(1);
 }
 
