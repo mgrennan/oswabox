@@ -67,10 +67,9 @@ float temp(int);
 // Program variables
 //
 int GPSflag = 0;				 // use GPS
-int Bannerflag = 1;				 // Print program Banner
 char output[20] = "";			 // h=HUMAN, c=CSV, s=SQL
 char station[20] = "";			 // Name the Station
-char gpstype[20] = "";			 // s=serial device, d=serial device
+char gpstype[20] = "";			 // s=serial device, d=gps daemon device
 char table[64] = "";			 // Table name used in SQL
 static uint8_t dht22_dat[5] =		 // storage for Temp device
 {
@@ -94,7 +93,11 @@ int main (int argc, char **argv)
 	//
 	// Make sure all the GPI pins are set correctly
 	//
-	wiringPiSetup () ;
+	if (wiringPiSetup () < 0)
+	{
+		fprintf (stderr, "Unable to setup wiringPi.\n");
+		return 1;
+	}
 	pinMode (LED, OUTPUT) ;
 
 	if ( GPSflag )
@@ -108,12 +111,6 @@ int main (int argc, char **argv)
 	//
 	// Setup Interups for the Wind and Rain Devices
 	//
-	if (wiringPiSetup () < 0)
-	{
-		fprintf (stderr, "Unable to setup wiringPi.\n");
-		return 1;
-	}
-
 	// set Pin 17/0 generate an interrupt on high-to-low transitions
 	if ( wiringPiISR (WIND_PIN, INT_EDGE_FALLING, &WindInterrupt) < 0 )
 	{
@@ -229,20 +226,20 @@ int main (int argc, char **argv)
 void print_usage(const char *prog)
 {
 
-	printf("Open Source Weather and Air quality Box (OSWABox)\n");
+	printf("Open Source Weather and Air quality Box\n");
 	printf(" - Version %4.2f\n\n",Version);
-	printf("Usage: %s [-BGost]\n", prog);
-	puts( "  -b --Banner  - Turn off the banner\n"
-		"  -g --GPS     - Turn on the GPS\n"
+	printf("Usage: %s [-gostv]\n", prog);
+	puts(   "  -g --GPS     - turn on the GPS\n"
 		"      s - Serial device\n"
 		"      d - gps device\n"
 		"  -h --help    - print this help message\n"
-		"  -s --station - Station name\n"
-		"  -t --table   - Table name used for SQL\n"
+		"  -s --station - station name\n"
+		"  -t --table   - table name used for SQL\n"
 		"  -o --output  - [chq] output type\n"
 		"      c - CSV output\n"
 		"      h - Human readable output\n"
-		"      s - SQL output\n");
+		"      s - SQL output\n" 
+		"  -v --version - print version number" );
 	exit(1);
 }
 
@@ -253,26 +250,23 @@ void parse_opts(int argc, char *argv[])
 	{
 		static const struct option lopts[] =
 		{
-			{ "Banner", no_argument, NULL, 'b' },
 			{ "GPS",required_argument, NULL, 'g' },
 			{ "help", no_argument, NULL, 'h' },
 			{ "ouput", required_argument, NULL, 'o' },
 			{ "station", required_argument, NULL, 's' },
 			{ "table", required_argument, NULL, 't' },
+			{ "version", no_argument, NULL, 'v'},
 			{ NULL, 0, 0, 0 },
 		};
 		int c;
 
-		c = getopt_long(argc, argv, "bg:ho:s:t:", lopts, NULL);
+		c = getopt_long(argc, argv, "g:ho:s:t:v", lopts, NULL);
 
 		if (c == -1)
 			break;
 
 		switch (c)
 		{
-			case 'b':
-				Bannerflag = 0;
-				break;
 			case 'g':
 				GPSflag = 1;
 				strcpy(gpstype, optarg);
@@ -292,6 +286,9 @@ void parse_opts(int argc, char *argv[])
 				optarg[64] = 0;	 // Limit the length of the input
 				strcpy(table, optarg);
 				break;
+			case 'v':
+				printf("OSWABox - Version %4.2f\n\n",Version);
+				exit(1);
 			default:
 				print_usage(argv[0]);
 				break;

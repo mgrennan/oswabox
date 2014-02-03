@@ -11,28 +11,32 @@ program are based on wiringPi Examples
 
 Example programs are:
 
-    blinkgreen.c - Blink the Green LED
+    blink.c - Blink the Green LED
 
-    temp.c - Read the tempiture and humity from the RHT03
+    temperature.c - Read the tempiture and humity from the RHT03
 
     pressure.c - Read the air pressure, temp and altitude from the BMP085
 
     mcp3008.c - Read the voltage on one pin of the mcp3008
 
-    airqual.c - Read the resistence of each of the devices on the mcp3008
-
-    winc.c - Read the wind speed and direction fromt the wind sensors
+    wind.c - Read the wind speed and direction fromt the wind sensors
 
     rain.c - Read the rain sensor
 
-    position.c - Read the data from the gps and display the time, location and altitude
+    gps-serial.c - Read GPS data from the serial port and print time, location and altitude
+
+    gps-gpsd.c - Read GPS data from the gpsd daemon and print time, location and altitude
 
     oswabox.c - This program brings all the guages into one programs and outputs
 	the data into a number of formats.
 
+THANKS
+======
+
 I want to thank Walter Dal Mut for the gps library used here. https://github.com/wdalmut/libgps
 
-=================
+Compile and execure
+===================
 
 To compile all the examples and put them in ~/bin type
 
@@ -45,15 +49,12 @@ To compile an individual example, just type
 
 The resulting appliation are written to the build directory. To run an example:
 
-pi@station:~$  sudo build/oswabox -g
+pi@station:~$  sudo build/oswabox 
 
 The current conditions are:
 
-      Date: 2014-01-22
-      Time: 22:15:03
-  Latitude: 37.533287
- Longitude: -95.621258
-  Altitude: 398.200000 m
+      Date: 01/01/2014
+      Time: 13:21:01.0001
  Tempeture: 22.600000 c = 72.68 f
   Humitity: 20.900000 %
   Pressure: 971.530029 hPa =  28.69 inch of mercury

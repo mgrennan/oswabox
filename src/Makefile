@@ -14,16 +14,18 @@ LDLIBS    = -lwiringPi -lpthread -lm -lgps
 
 BUILD_DIR = ../build
 
+# Name of text file containing build number.
+BUILD_NUMBER_FILE=build-number.txt
+
 # Should not alter anything below this line
 ###############################################################################
 
 OBJ	=	$(SRC:.c=.o)
 
 BINS	=	$(SRC:.c=)
-# nmealib/lib/libnmea.a 
 
 all:	start libgps.a blink wind rain mcp3008 temperature pressure \
-	rain wind gps-gpsd gps-serial oswabox
+	rain wind gps-gpsd gps-serial oswabox oswaboxd
 	@echo "    $(BINS)" | fmt
 	@echo ""
 
@@ -62,12 +64,17 @@ mcp3008:	mcp3008.o
 oswabox:	oswabox.o bmp085.o
 	@$(CC) -o ${BUILD_DIR}/$@ oswabox.o libgps.a bmp085.o $(LDFLAGS) $(LDLIBS)
 
+oswdboxd:	oswabox.o $(BUILD_NUMBER_FILE)
+	@$(CC) -o ${BUILD_DIR}/$@ oswabox.o $(LDFLAGS) $(LDLIBS) $(BUILD_NUMBER_LDFLAGS)
+
 install:
 	sudo cp ${BUILD_DIR}/$(BINS) /usr/bin
+
 .c.o:
 	@echo [CC] $<
 	@$(CC) -c $(CFLAGS) $< -o $@
 
-
+# Include build number rules.
+#include ./buildnumber.mak
 
 # DO NOT DELETE
