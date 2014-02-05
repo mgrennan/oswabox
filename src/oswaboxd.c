@@ -11,6 +11,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <errno.h>
 #include <unistd.h>
 #include <signal.h>
 #include <getopt.h>
@@ -30,14 +31,21 @@
 void print_usage(const char *);
 void parse_opts(int argc, char *argv[]);
 static void become_daemon() ;
+void RainInterrupt(void);
+void WindInterrupt(void);
 
 //
 // GPIO pin decrelations
 //
-#define LED 3                           // The wiringPi pin for the LED
+#define LED_PIN  3                      // The wiringPi pin for the LED
 #define DHT_PIN  7                      // The wiringPi pin for the RHT03
 #define WIND_PIN 0                      // The wiringPi pin for the wind speed
 #define RAIN_PIN 1                      // The wiringPi pin for the rain guage
+
+//
+// Application Definations
+//
+#define SecondsResluation 10 
 
 //
 // Global program variables
@@ -45,32 +53,73 @@ static void become_daemon() ;
 int GPSflag = 0;                        // collect GPS data
 char gpstype[20] = "";                  // The GPS is s=serial device, d=gps daemon device
 int collectionPeriod = 120 ;		// Default delay between observation collections in seconds 
+volatile unsigned long RainCount = 0;   // Counter for tipping bucket 0.011 inches per event
+volatile unsigned long WindCount = 0;	// Counter for wind speed s 1.492 mph per event
 
 int main(int argc, char **argv)
 {
+    float RainAccumulation = 0;		// Current rainfall accumulation
+    float WindAccumulation = 0;
+    float HourlyRainTotal = 0;		// Total rainfall over the last hour
+    float HourlyWindHigh = 0;
+    float DailyTempHigh = 0;
+    float DailyTempLow = 0;
+    float DailyRainTotal = 0;		// Totlal rainfall for today
+    float DailyWindHigh = 0;
+    char printBuffer[80];
 
     parse_opts(argc,argv);		// check for command line arguments
 
-    if (wiringPiSetup () < 0)
+//
+// Initilise hardware and program settings
+//
+    if (wiringPiSetup () < 0)		// Setup all Raspberry Pi Pins
     {
         fprintf (stderr, "Unable to setup wiringPi.\n");
         return 1;
     }
-    pinMode (LED, OUTPUT) ;		// The the LED IO pin as Output
-    digitalWrite (LED, LOW) ;           // Turn LED Off
-
+    pinMode (LED_PIN, OUTPUT) ;		// Set LED pin as an output
+    digitalWrite (LED_PIN, LOW) ;       // LED Off
+    if ( wiringPiISR (RAIN_PIN, INT_EDGE_FALLING, &RainInterrupt) < 0 )
+    {
+        fprintf (stderr, "Unable to setup ISR: %s\n", strerror (errno));
+        return 1;
+    }
+    if ( wiringPiISR (WIND_PIN, INT_EDGE_FALLING, &WindInterrupt) < 0 )
+    {
+        fprintf (stderr, "Unable to setup ISR: %s\n", strerror (errno));
+        return 1;
+    }
     become_daemon();			// Make this program run in the background
 
+//
+// Mail Loop
+//
     syslog (LOG_NOTICE, "Starting weather collection.");
     while (1)
     {
 
-	digitalWrite (LED, HIGH) ;       // LED On
+	digitalWrite (LED_PIN, HIGH) ;  // LED On
+
+        RainAccumulation = RainCount * 0.011 ;
+	HourlyRainTotal += RainAccumulation;
+	DailyRainTotal += RainAccumulation;
+
+#ifdef DEBUG
+        sprintf(printBuffer, "DEBUG: Current Railfall = %6.2f", RainCount * 0.011);
+	syslog(LOG_NOTICE, printBuffer);
+        sprintf(printBuffer, "DEBUG: Railfall Accumulation = %6.2f", RainAccumulation);
+	syslog(LOG_NOTICE, printBuffer);
+        sprintf(printBuffer, "DEBUG: Railfall HourlyRainTotal = %6.2f", HourlyRainTotal);
+	syslog(LOG_NOTICE, printBuffer);
+        sprintf(printBuffer, "DEBUG: Railfall DailyRainTotal = %6.2f", DailyRainTotal);
+	syslog(LOG_NOTICE, printBuffer);
+#endif
 
         //TODO: Collect Weather information here.
-        sleep (2) ;			// FAKE PRODESS FOR NOW !!!
+        sleep (SecondsResluation) ;	// FAKE PRODESS FOR NOW !!!
 
-	digitalWrite (LED, LOW) ;       // LED Off
+	digitalWrite (LED_PIN, LOW) ;   // LED Off
 
         sleep ( collectionPeriod );	// Sleep untill we need to collect observations again
 
@@ -136,6 +185,10 @@ void parse_opts(int argc, char *argv[])
 
         }
 }
+
+/*
+//
+*/
 static void become_daemon()
 {
     pid_t pid;
@@ -187,5 +240,17 @@ static void become_daemon()
 
     /* Open the log file */
     openlog ("oswaboxd", LOG_PID, LOG_DAEMON);
+}
+
+// Interrupt  called every time an event occurs
+void RainInterrupt(void)
+{
+        WindCount++;
+}
+
+// Interrupt called every time an event occurs
+void WindInterrupt(void)
+{
+        RainCount++;
 }
 
