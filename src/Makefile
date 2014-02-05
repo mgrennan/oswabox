@@ -10,7 +10,7 @@ CFLAGS	  = $(DEBUG) -Wall $(INCLUDE) -Winline -pipe
 AR	  = ar
 
 LDFLAGS	  = -L/usr/local/lib
-LDLIBS    = -lwiringPi -lpthread -lm -lgps
+LDLIBS    = -lwiringPi -lpthread -lwiringPiDev -lm -lgps
 
 BUILD_DIR = ../build
 

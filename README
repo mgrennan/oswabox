@@ -2,38 +2,39 @@
 OSWABox - Ver. 0.4
 ================
 
-This code is developted to read weather data from the Open Source
-Weather and Air Box (OSWABox) based on the AirPi (AirPi.es).
+This code is developed to read weather data from the Open Source Weather station.
+OSWABox is based on the AirPi (AirPi.es) who's code is written in Python.
 
-The orginal code for the AirPi was written in Python.  This code uses
-the wiringPi library (wiringPi.com) and is written in C. Many of these 
-program are based on wiringPi Examples
+This code is written in C. It uses the wiringPi2 library (github.com/WiringPi/WiringPi2-Python)
+also written in written in C. 
 
-Example programs are:
+OSWABox has example programs for each of the OSWABox functions:
 
-    blink.c - Blink the Green LED
 
-    temperature.c - Read the tempiture and humity from the RHT03
+    blink - Blink the Green LED
 
-    pressure.c - Read the air pressure, temp and altitude from the BMP085
+    temperature - Read the tempiture and humity from the RHT03
 
-    mcp3008.c - Read the voltage on one pin of the mcp3008
+    pressure - Read the air pressure, temp and altitude from the BMP085
 
-    wind.c - Read the wind speed and direction fromt the wind sensors
+    mcp3008 - Read the voltage on one pin of the mcp3008
 
-    rain.c - Read the rain sensor
+    wind - Read the wind speed and direction fromt the wind sensors
 
-    gps-serial.c - Read GPS data from the serial port and print time, location and altitude
+    rain - Read the rain sensor
 
-    gps-gpsd.c - Read GPS data from the gpsd daemon and print time, location and altitude
+    gps-serial - Read GPS data from the serial port and print time, location and altitude
 
-    oswabox.c - This program brings all the guages into one programs and outputs
+    gps-gpsd - Read GPS data from the gpsd daemon and print time, location and altitude
+
+There are three programs to use as a production weather station depending on how
+you want to operate. 
+
+    oswabox - run as a client program program read all the guage and outputs
 	the data into a number of formats.
 
-THANKS
-======
-
-I want to thank Walter Dal Mut for the gps library used here. https://github.com/wdalmut/libgps
+    oswaboxd - is a daemon designed to continusly collect guage data. This allows for
+	observations like daily temp hi/low and rainfall. 
 
 Compile and execure
 ===================
@@ -49,25 +50,41 @@ To compile an individual example, just type
 
 The resulting appliation are written to the build directory. To run an example:
 
-pi@station:~$  sudo build/oswabox 
+pi@station:~$  sudo build/oswabox -g d
+       Date: 2014-02-05T17:46:43.290Z
+  Longitude:    -95.6212
+   Latitude:     37.5333
+   Altitude:    399.9000
+Temperature:     20.7000 C      =  69.26 F
+   Humitity:     17.4000 %
+   Pressure:    986.1500 hPa    =  29.12 inch of mercury
+ Wind Speed:      0.0000 mph
+  Direction:      0.0000
+  Rain Fall:      0.0000 ipm
+   Device 0:    731.5947 ohms
+   Device 1:     21.5264 ohms
+   Device 2:   2427.7175 ohms
+   Device 3:  34114.6875 ohms
+   Device 4:     38.9795 ohms
+   Device 5:     27.6422 ohms
+   Device 6:     26.8559 ohms
 
-The current conditions are:
 
-      Date: 01/01/2014
-      Time: 13:21:01.0001
- Tempeture: 22.600000 c = 72.68 f
-  Humitity: 20.900000 %
-  Pressure: 971.530029 hPa =  28.69 inch of mercury
-Wind Speed: 0.000000 mph
- Direction: 0.000000
- Rain Fall: 0.000000 ipm
-  Device 0: 601.036316 ohms
-  Device 1: 21.526419 ohms
-  Device 2: 2063.679443 ohms
-  Device 3: 33662.593750 ohms
-  Device 4: 71.002319 ohms
-  Device 5: 26.266270 ohms
-  Device 6: 26.462805 ohms
-  Device 7: 39585.691406 ohms
+Output as SQL:
 
+pi@station:~$  sudo build/oswabox -o s -g d -t obs -s TORKS
+
+INSERT INTO obs (Station,Datetime,Longitude,Latitude,Temperature,Pressure,Relative_Humidity,Wind_Speed,Wind_Direction,Rain,Device_1,Device_2,Device_3,Device_4,Device_5,Device_6,Device_7,Device_8) values ("TORKS","2014-02-05T17:35:12.289Z",-95.6212,37.5333,20.5000,986.2800,17.6000,0.0000,0.0000,0.0000,745.7983,21.5264,2157.4407,32126.1602,41.2002,28.2320,27.6422,41742.9688);
+
+
+Output as CSV:
+pi@station:~$  sudo build/oswabox -o s -s TORKS
+
+"TORKS","2014-02-05T17:35:12.289Z",0.00,17.60,986.26,0.00,0.00,763.6624,21.5264,2093.3423,32447.7617,47.5761,26.8559,25.8732,40894.6484
+
+
+THANKS TOO
+==========
+
+I want to thank Walter Dal Mut for the gps library used here. https://github.com/wdalmut/libgps
 
