@@ -64,8 +64,8 @@ mcp3008:	mcp3008.o
 oswabox:	oswabox.o bmp085.o
 	@$(CC) -o ${BUILD_DIR}/$@ oswabox.o libgps.a bmp085.o $(LDFLAGS) $(LDLIBS)
 
-oswdboxd:	oswabox.o $(BUILD_NUMBER_FILE)
-	@$(CC) -o ${BUILD_DIR}/$@ oswabox.o $(LDFLAGS) $(LDLIBS) $(BUILD_NUMBER_LDFLAGS)
+oswaboxd:	oswaboxd.o bmp085.o 
+	@$(CC) -o ${BUILD_DIR}/$@ oswaboxd.o bmp085.o $(LDFLAGS) $(LDLIBS) $(BUILD_NUMBER_LDFLAGS)
 
 install:
 	sudo cp ${BUILD_DIR}/$(BINS) /usr/bin
