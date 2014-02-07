@@ -86,17 +86,14 @@ int main(int argc, char **argv)
 		printCalibrationTable(sensor);
 	}
 
-        if (measureTemperature+measurePressure)
-	{
-		makeMeasurement(fileDescriptor,sensor);
-		if (measurePressure)
-			printf("   Pressure: % 11.4f hPa\t=% 5.2f inch of mercury\n",(float)sensor->pressure/100.0,(sensor->pressure /100.0) * 0.02953);
-		if (measureTemperature)
-			printf("Temperature: % 11.4f C\t=% 5.2f F\n",sensor->temperature, (sensor->temperature * 1.8) + 32);
-		if (Altitude)
-			printf("   Altitude: % 11.4f m\t=% .2f f\n",44330.0 * (1.0 - pow(sensor->pressure / seaLevelPressure, 0.1903)),
-				44330.0 * (1.0 - pow(sensor->pressure / seaLevelPressure, 0.1903)) * 3.2808);
-	}
+	makeMeasurement(fileDescriptor,sensor);
+	if (measurePressure)
+		printf("   Pressure: % 11.4f hPa\t=% 5.2f inch of mercury\n",(float)sensor->pressure/100.0,(sensor->pressure /100.0) * 0.02953);
+	if (measureTemperature)
+		printf("Temperature: % 11.4f C\t=% 5.2f F\n",sensor->temperature, (sensor->temperature * 1.8) + 32);
+	if (Altitude)
+		printf("   Altitude: % 11.4f m\t=% .2f f\n",44330.0 * (1.0 - pow(sensor->pressure / seaLevelPressure, 0.1903)),
+			44330.0 * (1.0 - pow(sensor->pressure / seaLevelPressure, 0.1903)) * 3.2808);
 
 
 	free(sensor);

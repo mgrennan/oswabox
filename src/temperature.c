@@ -1,172 +1,179 @@
 /*
- *      dht22.c:
- *        Simple test program to test the wiringPi functions
- *        Based on the existing dht11.c
- *        Amended by technion@lolware.net
- */
+//  temperature.c
+//
+//    Read temperature and humity form DHT03 via 1-Wire interface.
+//
+//  NOTE: This program requires use of the WiringPi-2 libraries found
+//  in the WiringPi2-Python code.
+//
+//  SEE: https://github.com/Gadgetoid/WiringPi2-Python
+//
+*/
 
-#include <wiringPi.h>
+#define DEBUG
 
+#include <maxdetect.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <getopt.h>
-#include <sys/types.h>
 #include <unistd.h>
+#include <time.h>
+#include <sys/types.h>
+#include <sys/time.h>
 
-#include "locking.h"
+#include <wiringPi.h>
 
 void print_usage(const char *);
 void parse_opts(int argc, char *argv[]);
+int read_RHT (int, float *, float *);
+long long current_timestamp();
 
 #define MAXTIMINGS 85
 static int DHTPIN = 7;
-static int dht22_dat[5] = {0,0,0,0,0};
 
-static uint8_t sizecvt(const int read)
+int count = 1;
+
+int main(int argc, char *argv[])
 {
-  /* digitalRead() and friends from wiringpi are defined as returning a value
-  < 256. However, they are returned as int() types. This is a safety function */
+    float myTemp = 0 ;
+    float T = 0 ;
+    float myRelHumidity  = 0 ;
+    float H = 0 ;
+    int attempts ;
+    int goodReading ;
+    int i  ;
 
-  if (read > 255 || read < 0)
-  {
-    printf("Invalid data from wiringPi library\n");
-    exit(EXIT_FAILURE);
-  }
-  return (uint8_t)read;
-}
+    parse_opts(argc,argv);
 
-static int read_dht22_dat()
-{
-  uint8_t laststate = HIGH;
-  uint8_t counter = 0;
-  uint8_t j = 0, i;
-
-  dht22_dat[0] = dht22_dat[1] = dht22_dat[2] = dht22_dat[3] = dht22_dat[4] = 0;
-
-  // pull pin down for 18 milliseconds
-  pinMode(DHTPIN, OUTPUT);
-  digitalWrite(DHTPIN, HIGH);
-  delay(10);
-  digitalWrite(DHTPIN, LOW);
-  delay(18);
-  // then pull it up for 40 microseconds
-  digitalWrite(DHTPIN, HIGH);
-  delayMicroseconds(40); 
-  // prepare to read the pin
-  pinMode(DHTPIN, INPUT);
-
-  // detect change and read data
-  for ( i=0; i< MAXTIMINGS; i++) {
-    counter = 0;
-    while (sizecvt(digitalRead(DHTPIN)) == laststate) {
-      counter++;
-      delayMicroseconds(1);
-      if (counter == 255) {
-        break;
-      }
+    if (wiringPiSetup () == -1)
+    {
+        printf("\n\nERR: setup for wiringPi failed\n\n");
+        exit (1);
     }
-    laststate = sizecvt(digitalRead(DHTPIN));
 
-    if (counter == 255) break;
+    for ( i=1; i<=count; i++)
+    {
+        goodReading = 0;
+        attempts = 10;
+        while (!goodReading && (attempts-- > 0))
+        {
+            if ( read_RHT (DHTPIN, &myTemp, &myRelHumidity))
+                goodReading = 1; // stop now that it worked
+        }
 
-    // ignore first 3 transitions
-    if ((i >= 4) && (i%2 == 0)) {
-      // shove each bit into the storage bytes
-      dht22_dat[j/8] <<= 1;
-      if (counter > 16)
-        dht22_dat[j/8] |= 1;
-      j++;
+        T = myTemp / 10.0 ;
+        H = myRelHumidity / 10.0 ;
+        printf("Temperature: % 11.4f C\t= % 5.2f F\n", T, (T * 1.8) + 32) ;
+        printf("   Humidity: % 11.4f %%\n", H);
+        if ( count > 1 )
+            sleep(2);
     }
-  }
 
-  // check we read 40 bits (8bit x 5 ) + verify checksum in the last byte
-  // print it out if data is good
-  if ((j >= 40) && 
-      (dht22_dat[4] == ((dht22_dat[0] + dht22_dat[1] + dht22_dat[2] + dht22_dat[3]) & 0xFF)) ) {
-        float t, h;
-        h = (float)dht22_dat[0] * 256 + (float)dht22_dat[1];
-        h /= 10;
-        t = (float)(dht22_dat[2] & 0x7F)* 256 + (float)dht22_dat[3];
-        t /= 10.0;
-        if ((dht22_dat[2] & 0x80) != 0)  t *= -1;
-
-        printf("Temperature: % 11.4f C\t= % 5.2f F\n", t, (t * 1.8) + 32) ;
-        printf("   Humidity: % 11.4f %%\n", h);
-    return 1;
-  }
-  else
-  {
-//    printf("Data not good, skip\n");
     return 0;
-  }
 }
 
-int main (int argc, char *argv[])
-{
-  int lockfd;
-
-  parse_opts(argc,argv);
-
-  lockfd = open_lockfile(LOCKFILE);
-
-  if (wiringPiSetup () == -1)
-    exit(EXIT_FAILURE) ;
-        
-  if (setuid(getuid()) < 0)
-  {
-    perror("Dropping privileges failed\n");
-    exit(EXIT_FAILURE);
-  }
-
-  while (read_dht22_dat() == 0) 
-  {
-     delay(1000); // wait 1sec to refresh
-  }
-
-  delay(1500);
-  close_lockfile(lockfd);
-
-  return 0 ;
-}
 
 void print_usage(const char *prog)
 {
-	puts("\n\ndtemperature - Read and print temperature and humidity from DHT22 via one-wire interface\n\n"); 
-        printf("Usage: %s [-p]\n", prog);
-	puts("  -h --help\t print this help message\n");
-        puts("  -p --pin\t\t wireinPi pin number. Default 7;\n");
-        exit(1);
+    puts("\n\ndtemperature - Read and print temperature and humidity from DHT22 via one-wire interface\n\n");
+    printf("Usage: %s [-chp]\n", prog);
+    puts("  -c --count\t number of time to data temp");
+    puts("  -h --help\t print this help message");
+    puts("  -p --pin\t\t wireinPi pin number. Default 7;");
+    exit(1);
 }
+
 
 void parse_opts(int argc, char *argv[])
 {
-        while (1) {
-                static const struct option lopts[] = {
-			{ "help", no_argument, NULL, 'h' },
-                        { "pin", required_argument, NULL, 'p' },
-                        { NULL, 0, 0, 0 },
-                };
-                int c;
+    while (1)
+    {
+        static const struct option lopts[] =
+        {
+	    { "count", required_argument, NULL, 'c' },
+            { "help", no_argument, NULL, 'h' },
+            { "pin", required_argument, NULL, 'p' },
+            { NULL, 0, 0, 0 },
+        };
+        int c;
 
-                c = getopt_long(argc, argv, "hp:", lopts, NULL);
+        c = getopt_long(argc, argv, "c:hp:", lopts, NULL);
 
-                if (c == -1)
-                        break;
+        if (c == -1)
+            break;
 
-                switch (c) {
-		case 'h':
-			print_usage(argv[0]);
-			break;
-                case 'p':
-                        {
-                                DHTPIN = atoi(optarg);
-                        }
-                        break;
-                default:
-                        print_usage(argv[0]);
-                        break;
-                }
+        switch (c)
+        {
+	    case 'c':
+		count = atoi(optarg);
+		break;
+            case 'h':
+                print_usage(argv[0]);
+                break;
+            case 'p':
+            {
+                DHTPIN = atoi(optarg);
+            }
+            break;
+            default:
+                print_usage(argv[0]);
+                break;
         }
+    }
 }
 
+
+/*
+ * read_RHT:
+ *      Read the Temperature & Humidity from an RHT03 sensor
+ *********************************************************************************
+ */
+
+int read_RHT (const int pin, float *temp, float *rh)
+{
+    static long long nextTime   = 0 ;
+    long long now ;
+    static int lastTemp   = 0 ;
+    static int lastRh     = 0 ;
+    static int lastResult = 0 ;
+
+    unsigned char buffer [4] ;
+
+    now = current_timestamp();
+    if ( now < nextTime)         // if < second sience last call
+    {
+        *temp = lastTemp ;       // return last reading
+        *rh   = lastRh ;
+        return 1 ;
+    }
+
+    #ifdef DEBUG
+    printf("Reading NEW data\n");
+    #endif
+    lastResult = maxDetectRead (pin, buffer) ;
+
+    if (lastResult)
+    {
+        *rh        = lastRh     =  (buffer [0] * 256 + buffer [1]) ;
+        *temp      = lastTemp   =  (buffer [2] * 256 + buffer [3]) ;
+                                 // next call no sooner then now + 1 second
+        nextTime   = current_timestamp() + 2000 ;
+        return 1 ;
+    }
+    else
+    {
+        return 0 ;
+    }
+}
+
+
+long long current_timestamp()
+{
+    struct timeval te;
+    gettimeofday(&te, NULL);     // get current time
+                                 // caculate milliseconds
+    long long milliseconds = te.tv_sec*1000LL + te.tv_usec/1000;
+    // printf("milliseconds: %lld\n", milliseconds);
+    return milliseconds;
+}
