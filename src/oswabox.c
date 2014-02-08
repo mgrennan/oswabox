@@ -22,6 +22,7 @@
 #include <sys/ioctl.h>
 #include <linux/i2c-dev.h>
 #include <math.h>
+#include <time.h>
 
 #include <wiringPi.h>
 #include "wiringPiSPI.h"
@@ -81,6 +82,9 @@ static uint8_t dht22_dat[5] =                               // storage for Temp 
 
 int main (int argc, char **argv)
 {
+    time_t currTime;
+    struct tm *localTime;
+    char CurrentTime[20]  = "";
     int c;
     float value;
 
@@ -105,10 +109,16 @@ int main (int argc, char **argv)
 
     if ( GPSflag )
     {
-        if ( gpstype[0] = 's' )
+        if ( gpstype[0] == 's' )
         {
             gps_init();                                     // Open serial port
         }
+    } else {
+        currTime = time(NULL);                          // Current Time - from System or GPS
+        localTime = localtime(&currTime);
+        sprintf(CurrentTime,"20%02d:%02d:%02dT%02d:%02d:%02d",
+            localTime->tm_year-100, localTime->tm_mon+1, localTime->tm_mday,
+            localTime->tm_hour, localTime->tm_min, localTime->tm_sec);
     }
 
     //
@@ -150,7 +160,10 @@ int main (int argc, char **argv)
                 printf("%lf,",data.latitude);
                 printf("%lf,",data.longitude);
                 printf("%lf,",data.altitude);
+            } else {
+                printf("%s,",CurrentTime);
             }
+                
             printf("%6.2f,%6.2f,%6.2f,%6.2f,%6.2f",
                 temp(1), temp(0), pressure(0), wind_speed(), rain_fall() );
             for (c=0; c<8; c++)
@@ -170,6 +183,8 @@ int main (int argc, char **argv)
                 printf("   Latitude: % 11.4f\n",data.latitude);
                 printf("  Longitude: % 11.4f\n",data.longitude);
                 printf("   Altitude: % 11.4f m\n",data.altitude);
+            } else {
+                printf("       Time: %s\n",CurrentTime);
             }
             value = temp(1);
             printf("Temperature: % 11.4f C\t= % 3.2f F\n", value, (value * 1.8) + 32);
@@ -196,21 +211,19 @@ int main (int argc, char **argv)
             printf("Device_1,Device_2,Device_3,Device_4,");
             printf("Device_5,Device_6,Device_7,Device_8) values (");
 
-            printf("\"%s\",", station);
-            printf("\"20%02d-%02d-%02dT", data.year, data.month, data.day);
-            printf("%02d:%02d:%02dZ\"", data.hour, data.minute, data.second);
-            // Temperature
-            printf(",%6.4f", temp(1));
-            // Pressure
-            printf(",%6.4f", pressure(0));
-            // Relative_Humidity
-            printf(",%6.4f", temp(0));
-            // Wind Speed
-            printf(",%6.4f", wind_speed());
-            // Wind Direction
-            printf(",%6.4f", wind_direction());
-            // Rain Fall
-            printf(",%6.4f", rain_fall());
+            printf("\"%s\",", station);           // Station
+            if ( GPSflag ) {
+                printf("\"20%02d-%02d-%02dT", data.year, data.month, data.day);
+                printf("%02d:%02d:%02dZ\"", data.hour, data.minute, data.second);
+            } else {
+                printf("\"%s\"",CurrentTime);
+            }
+            printf(",%6.4f", temp(1));            // Temperature
+            printf(",%6.4f", pressure(0));        // Pressure
+            printf(",%6.4f", temp(0));            // Relative_Humidity
+            printf(",%6.4f", wind_speed());       // Wind Speed
+            printf(",%6.4f", wind_direction());   // Wind Direction
+            printf(",%6.4f", rain_fall());        // Rain Fall
             for (c=0; c<8; c++)
             {
                 printf(",%6.4f", read_adc_dev(c));

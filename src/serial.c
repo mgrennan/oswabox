@@ -20,6 +20,7 @@ void serial_init(void)
     }
 }
 
+
 void serial_config(void)
 {
     struct termios options;
@@ -32,21 +33,25 @@ void serial_config(void)
     tcsetattr(uart0_filestream, TCSANOW, &options);
 }
 
+
 void serial_println(const char *line, int len)
 {
-    if (uart0_filestream != -1) {
+    if (uart0_filestream != -1)
+    {
         char *cpstr = (char *)malloc((len+1) * sizeof(char));
         strcpy(cpstr, line);
         cpstr[len-1] = '\r';
         cpstr[len] = '\n';
 
         int count = write(uart0_filestream, cpstr, len+1);
-        if (count < 0) {
+        if (count < 0)
+        {
             //TODO: handle errors...
         }
         free(cpstr);
     }
 }
+
 
 // Read a line from UART.
 // Return a 0 len string in case of problems with UART
@@ -55,14 +60,19 @@ void serial_readln(char *buffer, int len)
     char c;
     char *b = buffer;
     int rx_length = -1;
-    while(1) {
+    while(1)
+    {
         rx_length = read(uart0_filestream, (void*)(&c), 1);
 
-        if (rx_length <= 0) {
+        if (rx_length <= 0)
+        {
             //wait for messages
             sleep(1);
-        } else {
-            if (c == '\n') {
+        }
+        else
+        {
+            if (c == '\n')
+            {
                 *b++ = '\0';
                 break;
             }
@@ -70,6 +80,7 @@ void serial_readln(char *buffer, int len)
         }
     }
 }
+
 
 void serial_close(void)
 {

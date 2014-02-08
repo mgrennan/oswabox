@@ -59,7 +59,7 @@ int main(int argc, char *argv[])
         while (!goodReading && (attempts-- > 0))
         {
             if ( read_RHT (DHTPIN, &myTemp, &myRelHumidity))
-                goodReading = 1; // stop now that it worked
+                goodReading = 1;                            // stop now that it worked
         }
 
         T = myTemp / 10.0 ;
@@ -91,7 +91,7 @@ void parse_opts(int argc, char *argv[])
     {
         static const struct option lopts[] =
         {
-	    { "count", required_argument, NULL, 'c' },
+            { "count", required_argument, NULL, 'c' },
             { "help", no_argument, NULL, 'h' },
             { "pin", required_argument, NULL, 'p' },
             { NULL, 0, 0, 0 },
@@ -105,9 +105,9 @@ void parse_opts(int argc, char *argv[])
 
         switch (c)
         {
-	    case 'c':
-		count = atoi(optarg);
-		break;
+            case 'c':
+                count = atoi(optarg);
+                break;
             case 'h':
                 print_usage(argv[0]);
                 break;
@@ -141,9 +141,9 @@ int read_RHT (const int pin, float *temp, float *rh)
     unsigned char buffer [4] ;
 
     now = current_timestamp();
-    if ( now < nextTime)         // if < second sience last call
+    if ( now < nextTime)                                    // if < second sience last call
     {
-        *temp = lastTemp ;       // return last reading
+        *temp = lastTemp ;                                  // return last reading
         *rh   = lastRh ;
         return 1 ;
     }
@@ -157,7 +157,7 @@ int read_RHT (const int pin, float *temp, float *rh)
     {
         *rh        = lastRh     =  (buffer [0] * 256 + buffer [1]) ;
         *temp      = lastTemp   =  (buffer [2] * 256 + buffer [3]) ;
-                                 // next call no sooner then now + 1 second
+        // next call no sooner then now + 1 second
         nextTime   = current_timestamp() + 2000 ;
         return 1 ;
     }
@@ -171,8 +171,8 @@ int read_RHT (const int pin, float *temp, float *rh)
 long long current_timestamp()
 {
     struct timeval te;
-    gettimeofday(&te, NULL);     // get current time
-                                 // caculate milliseconds
+    gettimeofday(&te, NULL);                                // get current time
+    // caculate milliseconds
     long long milliseconds = te.tv_sec*1000LL + te.tv_usec/1000;
     // printf("milliseconds: %lld\n", milliseconds);
     return milliseconds;
