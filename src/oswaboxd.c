@@ -12,6 +12,12 @@
 //    LICENSE GPL Version 2.1 
 */
 
+// TODO: 
+//       Write current high/low values to disk for restarts. These should include the
+//       unix time, name and the value.
+//       Create shared memroy of weather data.
+//       Create network API to request fetch current condations in JSON format.
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
@@ -52,7 +58,7 @@ float read_adc_dev(int);
 long readadc(int);
 static uint8_t sizecvt(int);
 static float read_dht22_dat(int);
-
+float windAverage(void);
 //
 // GPIO pin decrelations
 //
@@ -85,7 +91,7 @@ char BMP085_i2cAddress = 0x77;                              // Device number on 
 char *NamedPipe = "/tmp/OSWABoxPipe";                       // Named Pipe for CSV output
 struct gps_data_t gpsdata;
 static int dht22_dat[5] = {0,0,0,0,0};
-
+float Wind[100];
 
 //
 // Let the program begin
@@ -192,14 +198,13 @@ int main(int argc, char **argv)
 
 // TODO: Create function to turn AD reading into degrees +- ture north
             WindDirectionAccumulation += -95.0;             // wind direction +- degrees true north
+            Wind[ReportLoop] = WindDirectionAccumulation;
+            WindDirection = windAverage();
             if (debugFlag > 1)
             {
-                sprintf(printBuffer, "DEBUG: Windspeed Accumulation %d=%6.2f", ReportLoop+1,WindDirectionAccumulation);
+                sprintf(printBuffer, "DEBUG: Windspeed reading %d=%6.2f  Average=%6.2f", ReportLoop+1,WindDirectionAccumulation,WindDirection);
                 syslog(LOG_NOTICE, printBuffer);
             }
-            WindDirection = WindDirectionAccumulation / ReportPeriod;
-            WindDirection = fmod(WindDirection + 360.0, 360.0); 
-
 
             digitalWrite (LED_PIN, LOW) ;                   // LED Off
 
@@ -722,8 +727,41 @@ float read_dht22_dat(int TEMP)
         return h;
     }
   } else {
-    return -1000.0;
+    return 1000.0;
   }
 }
 
+float windAverage(void)
+{
+    float WindDirection = 0;
 
+    float totalX = 0.0;
+    float totalY = 0.0;
+    int count;
+
+    for (count=0; count < ReportPeriod; count++ )
+        { 
+            totalX = (Wind[count]*sin(Wind[count]) + totalX;
+            totalY = (Wind[count]*cos(Wind[count]) + totalY;
+
+            if ( totalY == 0.0)
+                WindDirection = 0.0;
+            else 
+                WindDirection = atan(totalX/totalY);
+            
+            WindDirection = WindDirection / 0.01745311;   // 3.14156 / 180
+
+            if (totalX*totalY < 0.0) {
+                if (totalx < 0.0)
+                        WindDirection += 180.0;
+                    else
+                        WindDirection += 360.0;
+            } else {
+                if (totalX > 0.0) {
+                    WindDirection += 180.0;
+                }
+            }
+
+        }
+        return (WindDirection);
+}
