@@ -41,21 +41,18 @@ int main (int argc, char *argv[])
 			printf("GPS Timmed out\n");
 			exit(EXIT_FAILURE);
 		}
-		else
-		{
 
-			gps_read(&gpsdata);
-			if( gpsdata.fix.mode > STATUS_NO_FIX )
-			{
-				unix_to_iso8601(gpsdata.fix.time, time_str, sizeof(time_str));
-				printf("       Date: %s\n  Longitude: % 11.4f\n   Latitude: % 11.4f\n   Altitude: % 11.4f\n",
-					time_str,
-					gpsdata.fix.longitude,
-					gpsdata.fix.latitude,
-					gpsdata.fix.altitude
-				);
-				done = 1;
-			}
+		gps_read(&gpsdata);
+		if( gpsdata.fix.mode > STATUS_NO_FIX )
+		{
+			unix_to_iso8601(gpsdata.fix.time, time_str, sizeof(time_str));
+			printf("       Date: %s\n  Longitude: % 11.4f\n   Latitude: % 11.4f\n   Altitude: % 11.4f\n",
+				time_str,
+				gpsdata.fix.longitude,
+				gpsdata.fix.latitude,
+				gpsdata.fix.altitude
+			);
+			done = 1;
 		}
 	}
 

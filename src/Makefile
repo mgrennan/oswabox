@@ -14,8 +14,6 @@ LDLIBS    = -lwiringPi -lpthread -lwiringPiDev -lm -lgps
 
 BUILD_DIR = ../build
 
-# Name of text file containing build number.
-BUILD_NUMBER_FILE=build-number.txt
 
 # Should not alter anything below this line
 ###############################################################################
@@ -31,6 +29,7 @@ all:	start libgps.a blink wind rain mcp3008 temperature pressure \
 
 start:
 	@echo "Building OSWABox"
+	./buildnumber.sh
 
 libgps.a:	gps.o serial.o nmea.o
 	@$(AR) -rsc libgps.a gps.o serial.o nmea.o
@@ -59,13 +58,13 @@ gps-serial:	gps-serial.o
 	@$(CC) -o ${BUILD_DIR}/$@ gps-serial.o libgps.a $(LDFLAGS) $(LDLIBS)
 
 mcp3008:	mcp3008.o
-	@$(CC) -o ${BUILD_DIR}/$@ mcp3008.o $(LDFLAGS) $(LDLIBS)
+	@$(CC) -o ${BUILD_DIR}/$@ mcp3008.o $(LDFLAGS) $(LDLIBS) 
 
 oswabox:	oswabox.o bmp085.o
 	@$(CC) -o ${BUILD_DIR}/$@ oswabox.o libgps.a bmp085.o $(LDFLAGS) $(LDLIBS)
 
 oswaboxd:	oswaboxd.o bmp085.o 
-	@$(CC) -o ${BUILD_DIR}/$@ oswaboxd.o bmp085.o $(LDFLAGS) $(LDLIBS) $(BUILD_NUMBER_LDFLAGS)
+	@$(CC) -o ${BUILD_DIR}/$@ oswaboxd.o bmp085.o $(LDFLAGS) $(LDLIBS)
 
 install:
 	sudo cp ${BUILD_DIR}/$(BINS) /usr/bin
@@ -74,7 +73,5 @@ install:
 	@echo [CC] $<
 	@$(CC) -c $(CFLAGS) $< -o $@
 
-# Include build number rules.
-#include ./buildnumber.mak
 
 # DO NOT DELETE

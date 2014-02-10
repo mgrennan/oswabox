@@ -25,6 +25,7 @@
 #include <string.h>
 #include <time.h>
 #include <math.h>
+#include <gps.h>
 #include <syslog.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
@@ -35,6 +36,8 @@
 #include "wiringPiSPI.h"
 #include <gertboard.h>
 #include "bmp085.h"
+
+#include "version.h"
 
 extern int readCalibrationTable(int,BMP085 *);
 extern void makeMeasurement(int, BMP085 *);
@@ -47,6 +50,8 @@ void WindInterrupt(void);
 float pressure(int);
 float read_adc_dev(int);
 long readadc(int);
+static uint8_t sizecvt(int);
+static float read_dht22_dat(int);
 
 //
 // GPIO pin decrelations
@@ -59,16 +64,16 @@ long readadc(int);
 //
 // Application Definations
 //
+#define MAXTIMINGS 85
 
 //
 // Global program variables
 //
 int GPSflag = 0;                                            // collect GPS data
 int debugFlag = 0;                                          // Output debug inforamtion to syslog daemon file
-char gpstype[20] = "";                                      // The GPS is s=serial device, d=gps daemon device
 int CollectionPeriod = 20 ;                                 // delay between observation collections in seconds
 int ReportPeriod = 9 ;                                      // report results every X collectionPeriods 20*9=180 (3 min)
-int BMP085_mode = 2;                                        // 0=ULTRA LOW POWER 1=STANDARD 2=HIGH RESOLUTION 3=ULTRA HIGH RESOLUTION
+int BMP085_mode = 2;                                        // 0=LOW POWER 1=STANDARD 2=HIGH RESOLUTION 3=ULTRA HIGH RESOLUTION
 int ADSamples = 10;                                         // number of read samples to average on the AD converter
 int NPFlag = 0;                                             // write obs to named pipe
 char GPShost[20] = "127.0.0.1";                             // Host IP for GPSd data
@@ -78,6 +83,9 @@ volatile unsigned long WindCount = 0;                       // Counter for wind 
 char *BMP085_device = "/dev/i2c-0";                         // Linux device for I2C buss
 char BMP085_i2cAddress = 0x77;                              // Device number on I2C buss for BMP085
 char *NamedPipe = "/tmp/OSWABoxPipe";                       // Named Pipe for CSV output
+struct gps_data_t gpsdata;
+static int dht22_dat[5] = {0,0,0,0,0};
+
 
 //
 // Let the program begin
@@ -86,25 +94,34 @@ int main(int argc, char **argv)
 {
     time_t currTime;
     struct tm *localTime;
-    char CurrentTime[20]  = "";
     int NamedPipeHandle;
     char printBuffer[80];
     int ReportLoop;
     int ADLoop;
+    int DONE;
+
+    char CurrentTime[25]  = "";                             // The current time UTC
+
+    float CurrentLatitude = 0;                              // The station's location
+    float CurrentLongitude = 0;
+    float CurrentAltitude = 0;
 
     float RainAccumulation = 0;                             // Current rainfall accumulation
-    float WindAccumulation = 0;
-    float WindDirectionAccumulation = 0;
-    float WindDirection = 0;
-    float CurrentPressure = 0;
-    float CurrentTemperature = 0;
+
+    float WindAccumulation = 0;                             // Wind speed
+    float WindDirection = 0;				    // Current wind direction
+    float WindDirectionAccumulation = 0;                    // Wind direction average in degrees
+    float DailyWindHigh = -1;
+
+    float CurrentPressure = 0;                              // Current Air Pressure
 
     float HourlyRainTotal = 0;                              // Total rainfall over the last hour
+    float DailyRainTotal = 0;                               // Total rainfall for today
 
+    float CurrentTemperature = 0;                           // Current temperature in Centragrade
     float DailyTempHigh = -9999.0;
     float DailyTempLow = 9999.0;
-    float DailyRainTotal = 0;                               // Total rainfall for today
-    float DailyWindHigh = -1;
+    float CurrentHumidity = 0;                              // Current humidity
 
     float ADAccumulation[8];                                // Current values of AD convert 0-7 
 
@@ -141,7 +158,7 @@ int main(int argc, char **argv)
     {
         for (ReportLoop=0; ReportLoop<ReportPeriod; ReportLoop++)
         {
-            if (debugFlag)
+            if (debugFlag > 1)
             {
                 sprintf(printBuffer, "DEBUG: Collecting Observations %d", ReportLoop+1);
                 syslog(LOG_NOTICE, printBuffer);
@@ -157,6 +174,10 @@ int main(int argc, char **argv)
                 DailyTempHigh = CurrentTemperature;
             if ( CurrentTemperature < DailyTempLow )        // Capture Daily Low Temp
                 DailyTempLow = CurrentTemperature;
+
+            do {
+                CurrentHumidity = read_dht22_dat(0);        // Read the current Humidity
+            } while ( CurrentHumidity > 900.00 );
 
             RainAccumulation = RainCount * 0.011 ;          // Calculate the current rainfall
             HourlyRainTotal += RainAccumulation;            // Accumulate the hourly rain total
@@ -188,12 +209,45 @@ int main(int argc, char **argv)
                 // These readings only need to be collected once per reporting period
                 //
                 digitalWrite (LED_PIN, HIGH) ;              // LED On
-                currTime = time(NULL);                      // Current Time - from System or GPS
+
+                currTime = time(NULL);                      // Current Time from System
                 localTime = localtime(&currTime);
                 sprintf(CurrentTime,"20%02d:%02d:%02dT%02d:%02d:%02d",
                     localTime->tm_year-100, localTime->tm_mon+1, localTime->tm_mday,
                     localTime->tm_hour, localTime->tm_min, localTime->tm_sec);
 
+                if (GPSflag)                                // Get GPS information 
+		{
+                     if (gps_open(GPShost, GPSport, &gpsdata) != 0)
+                     {
+                         syslog(LOG_NOTICE, "ERROR: connecting to gpsd");
+                         exit(EXIT_FAILURE);
+                     }
+                     gps_stream(&gpsdata, WATCH_ENABLE, NULL);
+                     DONE = 0;
+                     while( ! DONE) 
+                     {
+                         if ( !gps_waiting(&gpsdata, 500000) )
+                         {
+                            syslog(LOG_NOTICE,"ERROR: GPS Timmed out");
+                            DONE = 1;
+                         } else {
+                             if (debugFlag > 1 )
+                                 syslog(LOG_NOTICE, "Reading GPS information");
+                             gps_read(&gpsdata);
+                             if( gpsdata.fix.mode > STATUS_NO_FIX )
+                             {
+                                 unix_to_iso8601(gpsdata.fix.time, CurrentTime, sizeof(CurrentTime));
+                                 CurrentLatitude = gpsdata.fix.latitude;
+                                 CurrentLongitude = gpsdata.fix.longitude;
+                                 CurrentAltitude = gpsdata.fix.altitude;
+                                 DONE = 1;
+                             }
+                         }
+                     }
+                     gps_stream(&gpsdata, WATCH_DISABLE, NULL);
+                     gps_close(&gpsdata);
+		}
                 CurrentPressure = pressure(0) ;             // Read Air Pressure
 
                 for (ADLoop=0; ADLoop<8; ADLoop++)          // Read all the AD values
@@ -206,11 +260,19 @@ int main(int argc, char **argv)
                 {
                     sprintf(printBuffer, "DEBUG: Current time %s", CurrentTime);
                     syslog(LOG_NOTICE, printBuffer);
+                    sprintf(printBuffer, "DEBUG: Current Latitude %6.4f", CurrentLatitude);
+                    syslog(LOG_NOTICE, printBuffer);
+                    sprintf(printBuffer, "DEBUG: Current Longitude %6.4f", CurrentLongitude);
+                    syslog(LOG_NOTICE, printBuffer);
+                    sprintf(printBuffer, "DEBUG: Current Altitude %6.4f", CurrentAltitude);
+                    syslog(LOG_NOTICE, printBuffer);
                     sprintf(printBuffer, "DEBUG: Current Temperature = %6.2f", CurrentTemperature);
                     syslog(LOG_NOTICE, printBuffer);
                     sprintf(printBuffer, "DEBUG: Daily Temp High = %6.2f", DailyTempHigh);
                     syslog(LOG_NOTICE, printBuffer);
                     sprintf(printBuffer, "DEBUG: Daily Temp Low = %6.2f", DailyTempLow);
+                    syslog(LOG_NOTICE, printBuffer);
+                    sprintf(printBuffer, "DEBUG: Current Humidity = %6.2f", CurrentHumidity);
                     syslog(LOG_NOTICE, printBuffer);
                     sprintf(printBuffer, "DEBUG: Current Pressure = %6.2f", CurrentPressure);
                     syslog(LOG_NOTICE, printBuffer);
@@ -241,11 +303,12 @@ int main(int argc, char **argv)
                     if (NamedPipeHandle<0)
                     {
                         syslog (LOG_NOTICE, "Failed to open named pipe /tmp/OSWABoxPipe\n");
-                        exit(1);
+                        exit(EXIT_FAILURE);
                     }
 
-                    sprintf(printBuffer,"%s,%4.2f,%4.2f,%4.2f,%3.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f\n",
-                        CurrentTime,CurrentTemperature,CurrentPressure,WindAccumulation,WindDirection,
+                    sprintf(printBuffer,"%s,%4.4f,%4.4f,%6.4f,%4.2f,%4.2f,%4.2f,%4.2f,%3.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f\n",
+                        CurrentTime,CurrentLatitude,CurrentLongitude,CurrentAltitude,
+                        CurrentTemperature,CurrentHumidity,CurrentPressure,WindAccumulation,WindDirection,
                         ADAccumulation[0],ADAccumulation[1],ADAccumulation[2],ADAccumulation[3],
                         ADAccumulation[4],ADAccumulation[5],ADAccumulation[6],ADAccumulation[7]);
                     write(NamedPipeHandle, printBuffer, strlen(printBuffer));
@@ -276,8 +339,9 @@ int main(int argc, char **argv)
 void print_usage(const char *prog)
 {
     printf("Open Source Weather and Air quality Box Daemon\n");
-    printf(" - Version 0.0.0\n\n");
-    printf("Usage: %s [-BdgHhPprsv]\n", prog);
+    printf("   Version: %s\n",Version);
+    printf("Build Date: %s\n",BuildDate);
+    printf("\nUsage: %s [-BdgHhPprsv]\n", prog);
     puts(   "  -B --BMP085 - sets the pressure measurement mode.\n"
         "             0 = ULTRA LOW POWER\n"
         "             1 = STANDARD\n"
@@ -285,8 +349,6 @@ void print_usage(const char *prog)
         "             3 = ULTRA HIGH RESOLUTION\n"
         "  -d --debug      - debug level 1=low 2=high 3=everything\n"
         "  -g --gps        - Turn on the GPS\n"
-        "             s - Serial device\n"
-        "             d - GPS device; Also see host and port\n"
         "  -H --host       - GPS host IP; Default 127.0.0.1\n"
         "  -h --help       - Print this help message\n"
         "  -n --namedpipe  - write CSV data to named pipe /tmp/OSWABoxPipe\n"
@@ -295,7 +357,7 @@ void print_usage(const char *prog)
         "  -r --report     - number of observations before a report: Default 9\n"
         "  -s --samples    - number of samples to average the AD converter: Default 10\n"
         "  -v --version    - Print the version information\n" );
-    exit(1);
+    exit(EXIT_FAILURE);
 }
 
 
@@ -320,7 +382,7 @@ void parse_opts(int argc, char *argv[])
         };
         int c;
 
-        c = getopt_long(argc, argv, "B:d:g:H:hnP:p:r:s:v", lopts, NULL);
+        c = getopt_long(argc, argv, "B:d:gH:hnP:p:r:s:v", lopts, NULL);
 
         if (c == -1)
             break;
@@ -335,7 +397,6 @@ void parse_opts(int argc, char *argv[])
                 break;
             case 'g':
                 GPSflag = 1;
-                strcpy(gpstype, optarg);
                 break;
             case 'H':
 		strcpy(GPShost, optarg);
@@ -359,8 +420,9 @@ void parse_opts(int argc, char *argv[])
                 ADSamples = atoi(optarg);
 		break;
             case 'v':
-                printf("OSWABox Version 0.0.0 Beta\n");
-                exit(1);
+                printf("OSWABox Version: %s\n",Version);
+                printf("     Build Date: %s\n",BuildDate);
+                exit(EXIT_FAILURE);
             default:
                 print_usage(argv[0]);
                 break;
@@ -458,19 +520,19 @@ float pressure(int temp)
     if (fileDescriptor<0)
     {
         syslog (LOG_NOTICE, "Failed to open i2c device!\n");
-        exit(1);
+        exit(EXIT_FAILURE);
     }
 
     if (ioctl(fileDescriptor, I2C_SLAVE, sensor->i2cAddress)<0)
     {
         syslog (LOG_NOTICE, "Failed to select BMP085 i2c device!\n");
-        exit(1);
+        exit(EXIT_FAILURE);
     }
 
     if ( ! readCalibrationTable(fileDescriptor,sensor))
     {
         syslog (LOG_NOTICE, "Failed to read BMP085 calibration table!\n");
-        exit(1);
+        exit(EXIT_FAILURE);
     }
 
     if ( debugFlag > 1) 
@@ -586,6 +648,82 @@ long readadc(int adcnum)
     adc = ((buff[1] * 256 ) + buff[2]) & 0b1111111111 ;
 
     return adc;
+}
+
+
+static uint8_t sizecvt(const int read)
+{
+  /* digitalRead() and friends from wiringpi are defined as returning a value
+  < 256. However, they are returned as int() types. This is a safety function */
+
+  if (read > 255 || read < 0)
+  {
+    printf("Invalid data from wiringPi library\n");
+    exit(EXIT_FAILURE);
+  }
+  return (uint8_t)read;
+}
+
+
+float read_dht22_dat(int TEMP)
+{
+  uint8_t laststate = HIGH;
+  uint8_t counter = 0;
+  uint8_t j = 0, i;
+
+  dht22_dat[0] = dht22_dat[1] = dht22_dat[2] = dht22_dat[3] = dht22_dat[4] = 0;
+
+  pinMode(DHT_PIN, OUTPUT);                               // pull pin down for 18 milliseconds
+  digitalWrite(DHT_PIN, HIGH);
+  delay(10);
+  digitalWrite(DHT_PIN, LOW);
+  delay(18);
+  digitalWrite(DHT_PIN, HIGH);                            // then pull it up for 40 microseconds
+  delayMicroseconds(40);
+  pinMode(DHT_PIN, INPUT);                                // prepare to read the pin
+
+  for ( i=0; i< MAXTIMINGS; i++) {                       // detect change and read data
+    counter = 0;
+    while (sizecvt(digitalRead(DHT_PIN)) == laststate) {
+      counter++;
+      delayMicroseconds(1);
+      if (counter == 255) {
+        break;
+      }
+    }
+    laststate = sizecvt(digitalRead(DHT_PIN));
+
+    if (counter == 255) break;
+
+    // ignore first 3 transitions
+    if ((i >= 4) && (i%2 == 0)) {
+      // shove each bit into the storage bytes
+      dht22_dat[j/8] <<= 1;
+      if (counter > 16)
+        dht22_dat[j/8] |= 1;
+      j++;
+    }
+  }
+
+  // check we read 40 bits (8bit x 5 ) + verify checksum in the last byte
+  // print it out if data is good
+  if ((j >= 40) &&
+      (dht22_dat[4] == ((dht22_dat[0] + dht22_dat[1] + dht22_dat[2] + dht22_dat[3]) & 0xFF)) ) {
+        float t, h;
+        h = (float)dht22_dat[0] * 256 + (float)dht22_dat[1];
+        h /= 10;
+        t = (float)(dht22_dat[2] & 0x7F)* 256 + (float)dht22_dat[3];
+        t /= 10.0;
+        if ((dht22_dat[2] & 0x80) != 0)  t *= -1;
+
+    if ( TEMP ) {
+	return t;
+    } else {
+        return h;
+    }
+  } else {
+    return -1000.0;
+  }
 }
 
 
