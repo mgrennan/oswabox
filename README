@@ -1,5 +1,5 @@
 
-OSWABox - Ver. 0.4
+OSWABox - Ver. 0.0.7
 ================
 
 This code is developed to read weather data from the Open Source Weather station.
@@ -34,21 +34,25 @@ you want to operate.
 	the data into a number of formats.
 
     oswaboxd - is a daemon designed to continusly collect guage data. This allows for
-	observations like daily temp hi/low and rainfall. 
+	observations like daily temp hi/low and rainfall. You can controle the observation
+        and reporting time.
+
 
 Compile and execure
 ===================
+After you download the source. Change to the source diretory.
 
-To compile all the examples and put them in ~/bin type
+To compile all the program and put them in the ./build directory.
 
     make
 
-To compile an individual example, just type
+To compile an individual example
 
     cd src
     make {exampleName}
 
-The resulting appliation are written to the build directory. To run an example:
+All resulting appliation are written to the build directory. For exampe, to read the
+the current observations:
 
 pi@station:~$  sudo build/oswabox -g d
        Date: 2014-02-05T17:46:43.290Z
@@ -70,17 +74,23 @@ Temperature:     20.7000 C      =  69.26 F
    Device 6:     26.8559 ohms
 
 
-Output as SQL:
+The same program can out SQL.
 
 pi@station:~$  sudo build/oswabox -o s -g d -t obs -s TORKS
 
-INSERT INTO obs (Station,Datetime,Longitude,Latitude,Temperature,Pressure,Relative_Humidity,Wind_Speed,Wind_Direction,Rain,Device_1,Device_2,Device_3,Device_4,Device_5,Device_6,Device_7,Device_8) values ("TORKS","2014-02-05T17:35:12.289Z",-95.6212,37.5333,20.5000,986.2800,17.6000,0.0000,0.0000,0.0000,745.7983,21.5264,2157.4407,32126.1602,41.2002,28.2320,27.6422,41742.9688);
+INSERT INTO obs (Station,Datetime,Longitude,Latitude,Temperature,Pressure,Relative_Humidity,
+Wind_Speed,Wind_Direction,Rain,Device_1,Device_2,Device_3,Device_4,Device_5,Device_6,Device_7,
+Device_8) values ("TORKS","2014-02-05T17:35:12.289Z",-95.6212,37.5333,20.5000,986.2800,17.6000,
+0.0000,0.0000,0.0000,745.7983,21.5264,2157.4407,32126.1602,41.2002,28.2320,27.6422,41742.9688);
 
 
-Output as CSV:
-pi@station:~$  sudo build/oswabox -o s -s TORKS
+To continusly collect observation data for your weather station use - oswaboxd - The daemon.
 
-"TORKS","2014-02-05T17:35:12.289Z",0.00,17.60,986.26,0.00,0.00,763.6624,21.5264,2093.3423,32447.7617,47.5761,26.8559,25.8732,40894.6484
+To install this program run:
+
+  make install
+
+TODO:  Create and document how oswaboxd interfaces with programs like wView and WeeWx.
 
 
 THANKS TOO
