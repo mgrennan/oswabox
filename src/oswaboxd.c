@@ -12,6 +12,7 @@
 //    LICENSE GPL Version 2.1
 */
 
+<<<<<<< HEAD
 // TODO:
 //       Reset daily accumlators (rain) 
 //       Create array to calculate moving averages, wind, rain...
@@ -20,6 +21,13 @@
 //       Create shared memroy of weather data.
 //       Create network API to request fetch current condations in JSON format.
 //       Create output to The Citizen Weather Observer Program (CWOP).
+=======
+// TODO: 
+//       Write current high/low values to disk for restarts. These should include the
+//       unix time, name and the value.
+//       Create shared memroy of weather data.
+//       Create network API to request fetch current condations in JSON format.
+>>>>>>> bc8b3035c51ec504a83d05865547294136fa5fe3
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -95,6 +103,7 @@ char *NamedPipe = "/tmp/OSWABoxPipe";                       // Named Pipe for CS
 struct gps_data_t gpsdata;
 static int dht22_dat[5] = {0,0,0,0,0};
 float Wind[100];
+<<<<<<< HEAD
 struct statsRecord                                          // Structure use to write statistics record
 {
     time_t eventTime;
@@ -105,6 +114,8 @@ struct statsRecord                                          // Structure use to 
     float hourlyPrecip;
     float dailyPrecip;
 } stats;
+=======
+>>>>>>> bc8b3035c51ec504a83d05865547294136fa5fe3
 
 //
 // Let the program begin
@@ -241,7 +252,12 @@ int main(int argc, char **argv)
             WindDirectionAccumulation += -95.0;             // wind direction +- degrees true north
             Wind[ReportLoop] = WindDirectionAccumulation;
             WindDirection = windAverage();
+<<<<<<< HEAD
             if (debugFlag > 1) {
+=======
+            if (debugFlag > 1)
+            {
+>>>>>>> bc8b3035c51ec504a83d05865547294136fa5fe3
                 sprintf(printBuffer, "DEBUG: Windspeed reading %d=%6.2f  Average=%6.2f", ReportLoop+1,WindDirectionAccumulation,WindDirection);
                 syslog(LOG_NOTICE, printBuffer);
             }
@@ -774,9 +790,46 @@ float read_dht22_dat(int TEMP)
     else {
         return 1000.0;
     }
+<<<<<<< HEAD
+=======
+  } else {
+    return 1000.0;
+  }
+>>>>>>> bc8b3035c51ec504a83d05865547294136fa5fe3
 }
 
+float windAverage(void)
+{
+    float WindDirection = 0;
 
+    float totalX = 0.0;
+    float totalY = 0.0;
+    int count;
+
+    for (count=0; count < ReportPeriod; count++ )
+        { 
+            totalX = (Wind[count]*sin(Wind[count]) + totalX;
+            totalY = (Wind[count]*cos(Wind[count]) + totalY;
+
+            if ( totalY == 0.0)
+                WindDirection = 0.0;
+            else 
+                WindDirection = atan(totalX/totalY);
+            
+            WindDirection = WindDirection / 0.01745311;   // 3.14156 / 180
+
+            if (totalX*totalY < 0.0) {
+                if (totalx < 0.0)
+                        WindDirection += 180.0;
+                    else
+                        WindDirection += 360.0;
+            } else {
+                if (totalX > 0.0) {
+                    WindDirection += 180.0;
+                }
+            }
+
+<<<<<<< HEAD
 float windAverage(void)
 {
     float WindDirection = 0;
@@ -810,4 +863,8 @@ float windAverage(void)
 
     }
     return (WindDirection);
+=======
+        }
+        return (WindDirection);
+>>>>>>> bc8b3035c51ec504a83d05865547294136fa5fe3
 }
