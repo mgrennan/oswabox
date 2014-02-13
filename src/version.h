@@ -1,2 +1,2 @@
-#define Version "0.0.6"
-#define BuildDate "Thu Feb 13 00:32:09 UTC 2014"
+#define Version "0.0.7"
+#define BuildDate "Thu Feb 13 17:31:13 UTC 2014"
