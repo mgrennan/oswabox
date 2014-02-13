@@ -13,10 +13,9 @@
 */
 
 // TODO:
-//       Create function to turn AD reading into degrees +- ture north
-//       Reset daily accumlators (rain)
-//       Create array to calculate moving averages, wind, rain...
 //       Provide input to calibrate the Air Pressure
+//       Create function to turn AD reading into degrees +- ture north
+//       Create array to calculate hourly moving averages, wind, rain...
 //		http://server.gladstonefamily.net/pipermail/wxqc/2006-July/004319.html
 //       Create shared memroy of weather data.
 //       Create network API to request fetch current condations in JSON format.
@@ -126,6 +125,7 @@ int main(int argc, char **argv)
     float CurrentLatitude = 0;                              // The station's location
     float CurrentLongitude = 0;
     float CurrentAltitude = 0;
+    float AveragedAltitude = -9999.0;
 
     float CurrentTemperature = 0;                           // Current temperature in Centragrade
     float CurrentHumidity = 0;                              // Current humidity
@@ -139,6 +139,9 @@ int main(int argc, char **argv)
     float RainAccumulation = 0;                             // Current rainfall accumulation
 
     float ADAccumulation[8];                                // Current values of AD convert 0-7
+
+    int altitudePointer = 0;                                // Array to average the last 100 altitude readings 
+    float altitudeAverage[100];
 
     parse_opts(argc,argv);                                  // check for command line arguments
 
@@ -302,6 +305,8 @@ int main(int argc, char **argv)
                                 CurrentLatitude = gpsdata.fix.latitude;
                                 CurrentLongitude = gpsdata.fix.longitude;
                                 CurrentAltitude = gpsdata.fix.altitude;
+                                altitudeAverage[altitudePointer] = gpsdata.fix.altitude;
+				altitudePointer = (altitudePointer + 1 ) % 100;
                                 DONE = 1;
                             }
                         }
@@ -309,6 +314,13 @@ int main(int argc, char **argv)
                     gps_stream(&gpsdata, WATCH_DISABLE, NULL);
                     gps_close(&gpsdata);
                 }
+                if (AveragedAltitude == -9999.0 && altitudePointer == 0) {
+                    int i;
+                    for (i=0; i<100; i++) 
+			AveragedAltitude += altitudeAverage[i];
+                    AveragedAltitude = AveragedAltitude / 100.0;
+                }
+	
                 //
                 // Air Pressure
                 //
@@ -335,6 +347,8 @@ int main(int argc, char **argv)
                     sprintf(printBuffer, "DEBUG: Rreporting Period (RP) %2d:%02d", ReportMinutes, ReportSeconds);
                     syslog(LOG_NOTICE, printBuffer);
                     sprintf(printBuffer, "DEBUG: Current Altitude %6.2f", CurrentAltitude);
+                    syslog(LOG_NOTICE, printBuffer);
+                    sprintf(printBuffer, "DEBUG: Averaged GPS Altitude %6.2f", AveragedAltitude);
                     syslog(LOG_NOTICE, printBuffer);
                     sprintf(printBuffer, "DEBUG: Current Temperature = %6.2f", CurrentTemperature);
                     syslog(LOG_NOTICE, printBuffer);

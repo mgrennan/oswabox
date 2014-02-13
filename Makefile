@@ -15,6 +15,10 @@ init:
 
 install:
 	$(MAKE) -C src install
+	sudo mv build/oswaboxd /usr/sbin/oswaboxd
+	sudo chmod 750 /usr/sbin/oswaboxd
+	sudo mv oswaboxd.init /etc/init.d/oswaboxd
+	sudo chmod 750 /etc/init.d/oswaboxd
 
 clean: 
 	$(RM) -Rf $(BUILD_DIR)
