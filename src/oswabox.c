@@ -105,7 +105,7 @@ int main (int argc, char **argv)
 
     if ( GPSflag )
     {
-        if ( gpstype[0] = 's' )
+        if ( gpstype[0] == 's' )
         {
             gps_init();                                     // Open serial port
         }

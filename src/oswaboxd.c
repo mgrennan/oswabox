@@ -9,8 +9,17 @@
 //    For more information on the OSWABox hardware and software goto
 // http://www.oswabox.com/
 //
-//    LICENSE GPL Version 2.1 
+//    LICENSE GPL Version 2.1
 */
+
+// TODO:
+//       Reset daily accumlators (rain) 
+//       Create array to calculate moving averages, wind, rain...
+//       Provide input to calibrate the Air Pressure
+//		http://server.gladstonefamily.net/pipermail/wxqc/2006-July/004319.html
+//       Create shared memroy of weather data.
+//       Create network API to request fetch current condations in JSON format.
+//       Create output to The Citizen Weather Observer Program (CWOP).
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -52,7 +61,7 @@ float read_adc_dev(int);
 long readadc(int);
 static uint8_t sizecvt(int);
 static float read_dht22_dat(int);
-
+float windAverage(void);
 //
 // GPIO pin decrelations
 //
@@ -64,41 +73,49 @@ static float read_dht22_dat(int);
 //
 // Application Definations
 //
-#define MAXTIMINGS 85
+#define MAXTIMINGS 85                                       // Maximum time to wait for a state chhange in ms
 
 //
 // Global program variables
 //
+volatile unsigned long RainCount = 0;                       // Interupt counter for tipping bucket 0.011 inches per event
+volatile unsigned long WindCount = 0;                       // Interupt counter for wind speed s 1.492 mph per event
 int GPSflag = 0;                                            // collect GPS data
 int debugFlag = 0;                                          // Output debug inforamtion to syslog daemon file
-int CollectionPeriod = 20 ;                                 // delay between observation collections in seconds
-int ReportPeriod = 9 ;                                      // report results every X collectionPeriods 20*9=180 (3 min)
+int CollectionPeriod = 5;                                   // delay between observation collections in seconds
+int ReportPeriod = 60;                                      // report results every X collectionPeriods 5*20=300 (5 min)
 int BMP085_mode = 2;                                        // 0=LOW POWER 1=STANDARD 2=HIGH RESOLUTION 3=ULTRA HIGH RESOLUTION
 int ADSamples = 10;                                         // number of read samples to average on the AD converter
 int NPFlag = 0;                                             // write obs to named pipe
 char GPShost[20] = "127.0.0.1";                             // Host IP for GPSd data
 char GPSport[20] = "2947";                                  // Host PORT number for GPSd data
-volatile unsigned long RainCount = 0;                       // Counter for tipping bucket 0.011 inches per event
-volatile unsigned long WindCount = 0;                       // Counter for wind speed s 1.492 mph per event
 char *BMP085_device = "/dev/i2c-0";                         // Linux device for I2C buss
 char BMP085_i2cAddress = 0x77;                              // Device number on I2C buss for BMP085
 char *NamedPipe = "/tmp/OSWABoxPipe";                       // Named Pipe for CSV output
 struct gps_data_t gpsdata;
 static int dht22_dat[5] = {0,0,0,0,0};
-
+float Wind[100];
+struct statsRecord                                          // Structure use to write statistics record
+{
+    time_t eventTime;
+    float tempHigh;
+    float tempLow;
+    float hourlyWindHigh;                                   // High wind speed for reporting period
+    float highWindDir;
+    float hourlyPrecip;
+    float dailyPrecip;
+} stats;
 
 //
 // Let the program begin
 //
 int main(int argc, char **argv)
 {
-    time_t currTime;
+    time_t currTime;                                        // System time
     struct tm *localTime;
-    int NamedPipeHandle;
-    char printBuffer[80];
-    int ReportLoop;
-    int ADLoop;
-    int DONE;
+    FILE *fileHandle;                                       // Filesystem handle for open files
+    char printBuffer[80];                                   // Array buffers
+    int ReportLoop,ADLoop,DONE;
 
     char CurrentTime[25]  = "";                             // The current time UTC
 
@@ -106,60 +123,90 @@ int main(int argc, char **argv)
     float CurrentLongitude = 0;
     float CurrentAltitude = 0;
 
-    float RainAccumulation = 0;                             // Current rainfall accumulation
-
-    float WindAccumulation = 0;                             // Wind speed
-    float WindDirection = 0;				    // Current wind direction
-    float WindDirectionAccumulation = 0;                    // Wind direction average in degrees
-    float DailyWindHigh = -1;
+    float CurrentTemperature = 0;                           // Current temperature in Centragrade
+    float CurrentHumidity = 0;                              // Current humidity
 
     float CurrentPressure = 0;                              // Current Air Pressure
 
-    float HourlyRainTotal = 0;                              // Total rainfall over the last hour
-    float DailyRainTotal = 0;                               // Total rainfall for today
+    float WindAccumulation = 0;                             // Wind speed
+    float WindDirection = 0;                                // Current wind direction
+    float WindDirectionAccumulation = 0;                    // Wind direction average in degrees
 
-    float CurrentTemperature = 0;                           // Current temperature in Centragrade
-    float DailyTempHigh = -9999.0;
-    float DailyTempLow = 9999.0;
-    float CurrentHumidity = 0;                              // Current humidity
+    float RainAccumulation = 0;                             // Current rainfall accumulation
 
-    float ADAccumulation[8];                                // Current values of AD convert 0-7 
+    float ADAccumulation[8];                                // Current values of AD convert 0-7
 
     parse_opts(argc,argv);                                  // check for command line arguments
 
     //
     // Initilise hardware and program settings
     //
-    if (wiringPiSetup () < 0)                               // Setup all Raspberry Pi Pins
-    {
+    if (wiringPiSetup () < 0) {                             // Setup all Raspberry Pi Pins
         fprintf (stderr, "Unable to setup wiringPi.\n");
-        return 1;
+        exit(EXIT_FAILURE);
     }
     pinMode (LED_PIN, OUTPUT) ;                             // Set LED pin as an output
     digitalWrite (LED_PIN, LOW) ;                           // LED Off
-    if ( wiringPiISR (RAIN_PIN, INT_EDGE_FALLING, &RainInterrupt) < 0 )
-    {
+    if ( wiringPiISR (RAIN_PIN, INT_EDGE_FALLING, &RainInterrupt) < 0 ) {
         fprintf (stderr, "Unable to setup ISR: %s\n", strerror (errno));
-        return 1;
+        exit(EXIT_FAILURE);
     }
-    if ( wiringPiISR (WIND_PIN, INT_EDGE_FALLING, &WindInterrupt) < 0 )
-    {
+    if ( wiringPiISR (WIND_PIN, INT_EDGE_FALLING, &WindInterrupt) < 0 ) {
         fprintf (stderr, "Unable to setup ISR: %s\n", strerror (errno));
-        return 1;
+        exit(EXIT_FAILURE);
     }
+    stats.tempHigh = -9999.0;                               // Set imposible numbers to start
+    stats.tempLow = 9999.0;
+    stats.hourlyWindHigh = -1.0;
+    stats.highWindDir = -1.0;
+    stats.hourlyPrecip = -1.0;
+    stats.dailyPrecip = -1.0;
 
-    become_daemon();
+    become_daemon();                                        // Disconnect from user and stay resident
     syslog (LOG_NOTICE, "Starting weather collection.");
+
+    //
+    // Read Daily Highs and Lows from the stats file
+    //
+    fileHandle = fopen("/tmp/oswaboxStats", "rb");          // Read stats data to file if exists
+    if (fileHandle != NULL) {
+        if (debugFlag > 1) {
+            syslog (LOG_NOTICE, "DEBUG: opening /tmp/oswaboxStats");
+        }
+        fread(&stats, sizeof stats, 1, fileHandle);
+        if (debugFlag > 2) {
+            sprintf(printBuffer, "DEBUG: stats:time= %u", (unsigned int)stats.eventTime);
+            syslog(LOG_NOTICE, printBuffer);
+            sprintf(printBuffer, "DEBUG: stats:tempHigh= %f", stats.tempHigh);
+            syslog(LOG_NOTICE, printBuffer);
+            sprintf(printBuffer, "DEBUG: stats:tempLow= %f", stats.tempLow);
+            syslog(LOG_NOTICE, printBuffer);
+            sprintf(printBuffer, "DEBUG: stats:hourlyWindHigh= %f", stats.hourlyWindHigh);
+            syslog(LOG_NOTICE, printBuffer);
+            sprintf(printBuffer, "DEBUG: stats:highWindDir = %f", stats.highWindDir);
+            syslog(LOG_NOTICE, printBuffer);
+            sprintf(printBuffer, "DEBUG: stats:hourlyPrecip = %f", stats.hourlyPrecip);
+            syslog(LOG_NOTICE, printBuffer);
+            sprintf(printBuffer, "DEBUG: stats:dailyPrecip = %f", stats.dailyPrecip);
+            syslog(LOG_NOTICE, printBuffer);
+        }
+        fclose(fileHandle);
+    }
+    if ( time(NULL) >= stats.eventTime + 3600 ) {           // Reset stats if older than one hour
+        stats.hourlyWindHigh = -1.0;
+        stats.highWindDir = -1.0;
+        stats.hourlyPrecip = -1.0;
+    }
+    if ( time(NULL) >= stats.eventTime + 90000 ) {          // Reset stats if older than one day
+        stats.dailyPrecip = -1.0;
+    }
 
     //
     // Mail Loop
     //
-    while (1)
-    {
-        for (ReportLoop=0; ReportLoop<ReportPeriod; ReportLoop++)
-        {
-            if (debugFlag > 1)
-            {
+    while (1) {
+        for (ReportLoop=0; ReportLoop<ReportPeriod; ReportLoop++) {
+            if (debugFlag > 1) {
                 sprintf(printBuffer, "DEBUG: Collecting Observations %d", ReportLoop+1);
                 syslog(LOG_NOTICE, printBuffer);
             }
@@ -170,41 +217,38 @@ int main(int argc, char **argv)
             digitalWrite (LED_PIN, HIGH) ;                  // LED On
 
             CurrentTemperature = pressure(1);               // Read Air Temperature
-            if ( CurrentTemperature > DailyTempHigh )       // Capture Daily High Temp
-                DailyTempHigh = CurrentTemperature;
-            if ( CurrentTemperature < DailyTempLow )        // Capture Daily Low Temp
-                DailyTempLow = CurrentTemperature;
+            if ( CurrentTemperature > stats.tempHigh )      // Capture Daily High Temp
+                stats.tempHigh = CurrentTemperature;
+            if ( CurrentTemperature < stats.tempLow )       // Capture Daily Low Temp
+                stats.tempLow = CurrentTemperature;
 
             do {
                 CurrentHumidity = read_dht22_dat(0);        // Read the current Humidity
             } while ( CurrentHumidity > 900.00 );
 
-            RainAccumulation = RainCount * 0.011 ;          // Calculate the current rainfall
-            HourlyRainTotal += RainAccumulation;            // Accumulate the hourly rain total
-            DailyRainTotal += RainAccumulation;             // Accumulate the daily rain total
-            RainCount = 0.0;                                // Empty the counter
+            RainAccumulation += RainCount * 0.011 ;         // Calculate the current rainfall
+            RainCount = 0;                                  // Zero the Interupt counter
+            stats.hourlyPrecip += RainAccumulation;         // Accumulate the hourly rain total
+            stats.dailyPrecip += RainAccumulation;          // Accumulate the daily rain total
 
                                                             // Calculate the current wind speed
             WindAccumulation = WindCount * 1.492 / CollectionPeriod;
-            if ( WindAccumulation > DailyWindHigh )         // Capture the daily high wind speed
-                DailyWindHigh = WindAccumulation ;
-            WindCount = 0.0;
+            WindCount = 0;                                  // Zero the Interupt counter
+            if ( WindAccumulation > stats.hourlyWindHigh )  // Capture the daily high wind speed
+                stats.hourlyWindHigh = WindAccumulation ;
 
 // TODO: Create function to turn AD reading into degrees +- ture north
             WindDirectionAccumulation += -95.0;             // wind direction +- degrees true north
-            if (debugFlag > 1)
-            {
-                sprintf(printBuffer, "DEBUG: Windspeed Accumulation %d=%6.2f", ReportLoop+1,WindDirectionAccumulation);
+            Wind[ReportLoop] = WindDirectionAccumulation;
+            WindDirection = windAverage();
+            if (debugFlag > 1) {
+                sprintf(printBuffer, "DEBUG: Windspeed reading %d=%6.2f  Average=%6.2f", ReportLoop+1,WindDirectionAccumulation,WindDirection);
                 syslog(LOG_NOTICE, printBuffer);
             }
-            WindDirection = WindDirectionAccumulation / ReportPeriod;
-            WindDirection = fmod(WindDirection + 360.0, 360.0); 
-
 
             digitalWrite (LED_PIN, LOW) ;                   // LED Off
 
-            if ( ReportLoop+1 == ReportPeriod )             // Report Opbservations
-            {
+            if ( ReportLoop+1 == ReportPeriod ) {           // Report Opbservations
                 //
                 // These readings only need to be collected once per reporting period
                 //
@@ -216,113 +260,128 @@ int main(int argc, char **argv)
                     localTime->tm_year-100, localTime->tm_mon+1, localTime->tm_mday,
                     localTime->tm_hour, localTime->tm_min, localTime->tm_sec);
 
-                if (GPSflag)                                // Get GPS information 
-		{
-                     if (gps_open(GPShost, GPSport, &gpsdata) != 0)
-                     {
-                         syslog(LOG_NOTICE, "ERROR: connecting to gpsd");
-                         exit(EXIT_FAILURE);
-                     }
-                     gps_stream(&gpsdata, WATCH_ENABLE, NULL);
-                     DONE = 0;
-                     while( ! DONE) 
-                     {
-                         if ( !gps_waiting(&gpsdata, 500000) )
-                         {
+                if (GPSflag) {                              // Get GPS information
+                    if (gps_open(GPShost, GPSport, &gpsdata) != 0) {
+                        syslog(LOG_NOTICE, "ERROR: connecting to gpsd");
+                        exit(EXIT_FAILURE);
+                    }
+                    gps_stream(&gpsdata, WATCH_ENABLE, NULL);
+                    DONE = 0;
+                    while( ! DONE) {
+                        if ( !gps_waiting(&gpsdata, 500000) ) {
                             syslog(LOG_NOTICE,"ERROR: GPS Timmed out");
                             DONE = 1;
-                         } else {
-                             if (debugFlag > 1 )
-                                 syslog(LOG_NOTICE, "Reading GPS information");
-                             gps_read(&gpsdata);
-                             if( gpsdata.fix.mode > STATUS_NO_FIX )
-                             {
-                                 unix_to_iso8601(gpsdata.fix.time, CurrentTime, sizeof(CurrentTime));
-                                 CurrentLatitude = gpsdata.fix.latitude;
-                                 CurrentLongitude = gpsdata.fix.longitude;
-                                 CurrentAltitude = gpsdata.fix.altitude;
-                                 DONE = 1;
-                             }
-                         }
-                     }
-                     gps_stream(&gpsdata, WATCH_DISABLE, NULL);
-                     gps_close(&gpsdata);
-		}
+                        }
+                        else {
+                            if (debugFlag > 1 )
+                                syslog(LOG_NOTICE, "Reading GPS information");
+                            gps_read(&gpsdata);
+                            if( gpsdata.fix.mode > STATUS_NO_FIX ) {
+                                unix_to_iso8601(gpsdata.fix.time, CurrentTime, sizeof(CurrentTime));
+                                CurrentLatitude = gpsdata.fix.latitude;
+                                CurrentLongitude = gpsdata.fix.longitude;
+                                CurrentAltitude = gpsdata.fix.altitude;
+                                DONE = 1;
+                            }
+                        }
+                    }
+                    gps_stream(&gpsdata, WATCH_DISABLE, NULL);
+                    gps_close(&gpsdata);
+                }
                 CurrentPressure = pressure(0) ;             // Read Air Pressure
 
-                for (ADLoop=0; ADLoop<8; ADLoop++)          // Read all the AD values
-                {
+                for (ADLoop=0; ADLoop<8; ADLoop++) {        // Read all the AD values
                     ADAccumulation[ADLoop] = read_adc_dev(ADLoop);
                 }
                 digitalWrite (LED_PIN, LOW) ;               // LED Off
 
-                if (debugFlag)
-                {
+                if (debugFlag) {
+                    int ReportMinutes = CollectionPeriod * ReportPeriod / 60;
+                    int ReportSeconds = CollectionPeriod * ReportPeriod % 60;
                     sprintf(printBuffer, "DEBUG: Current time %s", CurrentTime);
                     syslog(LOG_NOTICE, printBuffer);
                     sprintf(printBuffer, "DEBUG: Current Latitude %6.4f", CurrentLatitude);
                     syslog(LOG_NOTICE, printBuffer);
                     sprintf(printBuffer, "DEBUG: Current Longitude %6.4f", CurrentLongitude);
                     syslog(LOG_NOTICE, printBuffer);
+                    sprintf(printBuffer, "DEBUG: Rreporting Period (RP) %d:%d", ReportMinutes, ReportSeconds);
+                    syslog(LOG_NOTICE, printBuffer);
                     sprintf(printBuffer, "DEBUG: Current Altitude %6.4f", CurrentAltitude);
                     syslog(LOG_NOTICE, printBuffer);
                     sprintf(printBuffer, "DEBUG: Current Temperature = %6.2f", CurrentTemperature);
                     syslog(LOG_NOTICE, printBuffer);
-                    sprintf(printBuffer, "DEBUG: Daily Temp High = %6.2f", DailyTempHigh);
+                    sprintf(printBuffer, "DEBUG: Daily High Temperature = %f", stats.tempHigh);
                     syslog(LOG_NOTICE, printBuffer);
-                    sprintf(printBuffer, "DEBUG: Daily Temp Low = %6.2f", DailyTempLow);
+                    sprintf(printBuffer, "DEBUG: Daily Low Temperature = %f", stats.tempLow);
                     syslog(LOG_NOTICE, printBuffer);
                     sprintf(printBuffer, "DEBUG: Current Humidity = %6.2f", CurrentHumidity);
                     syslog(LOG_NOTICE, printBuffer);
                     sprintf(printBuffer, "DEBUG: Current Pressure = %6.2f", CurrentPressure);
                     syslog(LOG_NOTICE, printBuffer);
-                    sprintf(printBuffer, "DEBUG: Current Railfall = %6.2f", RainCount * 0.011);
+                    sprintf(printBuffer, "DEBUG: Current Railfall = %6.2f", RainAccumulation);
                     syslog(LOG_NOTICE, printBuffer);
-                    sprintf(printBuffer, "DEBUG: Railfall Accumulation = %6.2f", RainAccumulation);
+                    sprintf(printBuffer, "DEBUG: RP Rainfall = %6.2f", RainAccumulation);
                     syslog(LOG_NOTICE, printBuffer);
-                    sprintf(printBuffer, "DEBUG: Railfall HourlyRainTotal = %6.2f", HourlyRainTotal);
+                    sprintf(printBuffer, "DEBUG: Hourly Precipition = %f", stats.hourlyPrecip);
                     syslog(LOG_NOTICE, printBuffer);
-                    sprintf(printBuffer, "DEBUG: Railfall DailyRainTotal = %6.2f", DailyRainTotal);
+                    sprintf(printBuffer, "DEBUG: Daily Precipition= %f", stats.dailyPrecip);
                     syslog(LOG_NOTICE, printBuffer);
-                    sprintf(printBuffer, "DEBUG: Windspeed = %6.2f", WindAccumulation);
+                    sprintf(printBuffer, "DEBUG: Current Windspeed = %6.2f", WindAccumulation);
                     syslog(LOG_NOTICE, printBuffer);
-                    sprintf(printBuffer, "DEBUG: Wind Direction = %6.2f", WindDirection);
+                    sprintf(printBuffer, "DEBUG: Current Wind Direction = %6.2f", WindDirection);
                     syslog(LOG_NOTICE, printBuffer);
-                    sprintf(printBuffer, "DEBUG: Daily Wind High = %6.2f", DailyWindHigh);
+                    sprintf(printBuffer, "DEBUG: Daily High Wind = %6.2f", stats.hourlyWindHigh);
                     syslog(LOG_NOTICE, printBuffer);
-                    for (ADLoop=0; ADLoop<8; ADLoop++)
-                    {
+                    sprintf(printBuffer, "DEBUG: RP High Wind speed = %f", stats.hourlyWindHigh);
+                    syslog(LOG_NOTICE, printBuffer);
+                    sprintf(printBuffer, "DEBUG: RP High Wind Direction = %f", stats.highWindDir);
+                    syslog(LOG_NOTICE, printBuffer);
+                    for (ADLoop=0; ADLoop<8; ADLoop++) {
                         sprintf(printBuffer, "DEBUG: AD %d = %6.2f", ADLoop, ADAccumulation[ADLoop]);
                         syslog(LOG_NOTICE, printBuffer);
                     }
                 }
 
-                if (NPFlag)
-                {
-                    NamedPipeHandle = open(NamedPipe,O_WRONLY);
-                    if (NamedPipeHandle<0)
-                    {
+                if (NPFlag) {
+                    int fH;
+                    fH = open(NamedPipe,O_WRONLY);
+                    if (fH<0) {
                         syslog (LOG_NOTICE, "Failed to open named pipe /tmp/OSWABoxPipe\n");
                         exit(EXIT_FAILURE);
                     }
-
-                    sprintf(printBuffer,"%s,%4.4f,%4.4f,%6.4f,%4.2f,%4.2f,%4.2f,%4.2f,%3.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f\n",
+                        sprintf(printBuffer,"%s,%4.4f,%4.4f,%6.4f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f\n",
                         CurrentTime,CurrentLatitude,CurrentLongitude,CurrentAltitude,
                         CurrentTemperature,CurrentHumidity,CurrentPressure,WindAccumulation,WindDirection,
+                        stats.tempHigh,stats.tempLow,stats.hourlyWindHigh,stats.highWindDir,
                         ADAccumulation[0],ADAccumulation[1],ADAccumulation[2],ADAccumulation[3],
                         ADAccumulation[4],ADAccumulation[5],ADAccumulation[6],ADAccumulation[7]);
-                    write(NamedPipeHandle, printBuffer, strlen(printBuffer));
-                    close(NamedPipeHandle);
+                    write(fH, printBuffer, strlen(printBuffer));
+                    close(fH);
                 }
             }
 
-            sleep ( CollectionPeriod );                       // Sleep until we need to collect observations again
+            fileHandle = fopen("/tmp/oswaboxStats", "w+b"); // Write stats data to file
+            if (fileHandle == NULL) {
+                syslog (LOG_NOTICE, "Failed to open /tmp/oswaboxStats\n");
+                exit(EXIT_FAILURE);
+            }
+            else {
+                stats.eventTime = time(NULL);               // Current Time from System
+                stats.highWindDir = 0.0;
+                stats.hourlyPrecip = 0.0;
+                stats.dailyPrecip = 0.0;
+                fwrite(&stats, sizeof stats, 1, fileHandle);
+                fclose(fileHandle);
+            }
+
+            sleep ( CollectionPeriod );                     // Sleep until we need to collect observations again
         }
         //
         // Zero accumlations for ths reporting period
         //
         WindDirectionAccumulation = 0.0;
-
+        RainAccumulation = 0.0;
+//TODO: reset daily accumlations Rain
 
     }
 
@@ -332,7 +391,7 @@ int main(int argc, char **argv)
     syslog (LOG_NOTICE, "Terminated.");
     closelog();
 
-    return EXIT_SUCCESS;
+    exit(EXIT_SUCCESS);
 }
 
 
@@ -363,10 +422,8 @@ void print_usage(const char *prog)
 
 void parse_opts(int argc, char *argv[])
 {
-    while (1)
-    {
-        static const struct option lopts[] =
-        {
+    while (1) {
+        static const struct option lopts[] = {
             { "BMP085", required_argument, NULL, 'B' },
             { "debug", required_argument, NULL, 'd' },
             { "gps",required_argument, NULL, 'g' },
@@ -387,8 +444,7 @@ void parse_opts(int argc, char *argv[])
         if (c == -1)
             break;
 
-        switch (c)
-        {
+        switch (c) {
             case 'B':
                 BMP085_mode = atoi(optarg);
                 break;
@@ -399,8 +455,8 @@ void parse_opts(int argc, char *argv[])
                 GPSflag = 1;
                 break;
             case 'H':
-		strcpy(GPShost, optarg);
-		break;
+                strcpy(GPShost, optarg);
+                break;
             case 'h':
                 print_usage(argv[0]);
                 break;
@@ -418,7 +474,7 @@ void parse_opts(int argc, char *argv[])
                 break;
             case 's':
                 ADSamples = atoi(optarg);
-		break;
+                break;
             case 'v':
                 printf("OSWABox Version: %s\n",Version);
                 printf("     Build Date: %s\n",BuildDate);
@@ -479,8 +535,7 @@ static void become_daemon(void)
 
     /* Close all open file descriptors */
     int x;
-    for (x = sysconf(_SC_OPEN_MAX); x>0; x--)
-    {
+    for (x = sysconf(_SC_OPEN_MAX); x>0; x--) {
         close (x);
     }
 
@@ -517,25 +572,22 @@ float pressure(int temp)
     sensor->oss = BMP085_mode;
 
     fileDescriptor = open(BMP085_device, O_RDWR);
-    if (fileDescriptor<0)
-    {
+    if (fileDescriptor < 0) {
         syslog (LOG_NOTICE, "Failed to open i2c device!\n");
         exit(EXIT_FAILURE);
     }
 
-    if (ioctl(fileDescriptor, I2C_SLAVE, sensor->i2cAddress)<0)
-    {
+    if (ioctl(fileDescriptor, I2C_SLAVE, sensor->i2cAddress) < 0) {
         syslog (LOG_NOTICE, "Failed to select BMP085 i2c device!\n");
         exit(EXIT_FAILURE);
     }
 
-    if ( ! readCalibrationTable(fileDescriptor,sensor))
-    {
+    if ( ! readCalibrationTable(fileDescriptor,sensor)) {
         syslog (LOG_NOTICE, "Failed to read BMP085 calibration table!\n");
         exit(EXIT_FAILURE);
     }
 
-    if ( debugFlag > 1) 
+    if ( debugFlag > 1)
         syslog (LOG_NOTICE, "Reading BMP085 pressure sensor");
 
     makeMeasurement(fileDescriptor,sensor);
@@ -549,6 +601,7 @@ float pressure(int temp)
     else
         return sensor->pressure/100.0;
 }
+
 
 /*
 // Read the Analog to Digital Converter (ADC) and return the current
@@ -573,8 +626,7 @@ float read_adc_dev(int pin)
         float resistance ;                                  // resistence in ohms
         char *name ;                                        // device name
     }
-    dev[8] =
-    {
+    dev[8] = {
         { 0, 3.3,  10000.0, "LDR light sensor" },
         { 0, 3.3,  22000.0, "TGS2600         " },
         { 0, 3.3,  10000.0, "MiSC-2710       " },
@@ -590,8 +642,7 @@ float read_adc_dev(int pin)
 
     ob = 0;
     tot = 0;
-    for (i=0; i<ADSamples; i++)                             // Read samples
-    {
+    for (i=0; i<ADSamples; i++) {                           // Read samples
         ob =  readadc(pin);
         tot = tot + (ob * 1.0) ;
         delay( 10 ) ;                                       // wait 10 miliseconds before reading again
@@ -603,12 +654,10 @@ float read_adc_dev(int pin)
     volt = (dev[pin].refvolt / 1023.0) * avg ;              // calculate the average voltage
     // reference voltage / 10bit AD (1023) * reading
 
-    if ( dev[pin].pullup )                                  // If this is a pullup resister
-    {
+    if ( dev[pin].pullup ) {                                // If this is a pullup resister
         value = (( dev[pin].resistance * dev[pin].refvolt ) / volt ) - dev[pin].resistance ;
     }
-    else                                                    // this is a pulldown resister
-    {
+    else {                                                  // this is a pulldown resister
         value = dev[pin].resistance / (( dev[pin].refvolt / volt ) - 1 ) ;
     }
 
@@ -638,7 +687,7 @@ long readadc(int adcnum)
 
     buff[1] += adcnum << 4 ;
 
-    if ( debugFlag > 2) 
+    if ( debugFlag > 2)
         syslog (LOG_NOTICE, "Reading MCP3008 AD value");
 
     wiringPiSPIDataRW(0, buff, 3);
@@ -653,62 +702,61 @@ long readadc(int adcnum)
 
 static uint8_t sizecvt(const int read)
 {
-  /* digitalRead() and friends from wiringpi are defined as returning a value
-  < 256. However, they are returned as int() types. This is a safety function */
+    /* digitalRead() and friends from wiringpi are defined as returning a value
+    < 256. However, they are returned as int() types. This is a safety function */
 
-  if (read > 255 || read < 0)
-  {
-    printf("Invalid data from wiringPi library\n");
-    exit(EXIT_FAILURE);
-  }
-  return (uint8_t)read;
+    if (read > 255 || read < 0) {
+        printf("Invalid data from wiringPi library\n");
+        exit(EXIT_FAILURE);
+    }
+    return (uint8_t)read;
 }
 
 
 float read_dht22_dat(int TEMP)
 {
-  uint8_t laststate = HIGH;
-  uint8_t counter = 0;
-  uint8_t j = 0, i;
+    uint8_t laststate = HIGH;
+    uint8_t counter = 0;
+    uint8_t j = 0, i;
 
-  dht22_dat[0] = dht22_dat[1] = dht22_dat[2] = dht22_dat[3] = dht22_dat[4] = 0;
+    dht22_dat[0] = dht22_dat[1] = dht22_dat[2] = dht22_dat[3] = dht22_dat[4] = 0;
 
-  pinMode(DHT_PIN, OUTPUT);                               // pull pin down for 18 milliseconds
-  digitalWrite(DHT_PIN, HIGH);
-  delay(10);
-  digitalWrite(DHT_PIN, LOW);
-  delay(18);
-  digitalWrite(DHT_PIN, HIGH);                            // then pull it up for 40 microseconds
-  delayMicroseconds(40);
-  pinMode(DHT_PIN, INPUT);                                // prepare to read the pin
+    pinMode(DHT_PIN, OUTPUT);                               // pull pin down for 18 milliseconds
+    digitalWrite(DHT_PIN, HIGH);
+    delay(10);
+    digitalWrite(DHT_PIN, LOW);
+    delay(18);
+    digitalWrite(DHT_PIN, HIGH);                            // then pull it up for 40 microseconds
+    delayMicroseconds(40);
+    pinMode(DHT_PIN, INPUT);                                // prepare to read the pin
 
-  for ( i=0; i< MAXTIMINGS; i++) {                       // detect change and read data
-    counter = 0;
-    while (sizecvt(digitalRead(DHT_PIN)) == laststate) {
-      counter++;
-      delayMicroseconds(1);
-      if (counter == 255) {
-        break;
-      }
+    for ( i=0; i< MAXTIMINGS; i++) {                        // detect change and read data
+        counter = 0;
+        while (sizecvt(digitalRead(DHT_PIN)) == laststate) {
+            counter++;
+            delayMicroseconds(1);
+            if (counter == 255) {
+                break;
+            }
+        }
+        laststate = sizecvt(digitalRead(DHT_PIN));
+
+        if (counter == 255) break;
+
+        // ignore first 3 transitions
+        if ((i >= 4) && (i%2 == 0)) {
+            // shove each bit into the storage bytes
+            dht22_dat[j/8] <<= 1;
+            if (counter > 16)
+                dht22_dat[j/8] |= 1;
+            j++;
+        }
     }
-    laststate = sizecvt(digitalRead(DHT_PIN));
 
-    if (counter == 255) break;
-
-    // ignore first 3 transitions
-    if ((i >= 4) && (i%2 == 0)) {
-      // shove each bit into the storage bytes
-      dht22_dat[j/8] <<= 1;
-      if (counter > 16)
-        dht22_dat[j/8] |= 1;
-      j++;
-    }
-  }
-
-  // check we read 40 bits (8bit x 5 ) + verify checksum in the last byte
-  // print it out if data is good
-  if ((j >= 40) &&
-      (dht22_dat[4] == ((dht22_dat[0] + dht22_dat[1] + dht22_dat[2] + dht22_dat[3]) & 0xFF)) ) {
+    // check we read 40 bits (8bit x 5 ) + verify checksum in the last byte
+    // print it out if data is good
+    if ((j >= 40) &&
+    (dht22_dat[4] == ((dht22_dat[0] + dht22_dat[1] + dht22_dat[2] + dht22_dat[3]) & 0xFF)) ) {
         float t, h;
         h = (float)dht22_dat[0] * 256 + (float)dht22_dat[1];
         h /= 10;
@@ -716,14 +764,50 @@ float read_dht22_dat(int TEMP)
         t /= 10.0;
         if ((dht22_dat[2] & 0x80) != 0)  t *= -1;
 
-    if ( TEMP ) {
-	return t;
-    } else {
-        return h;
+        if ( TEMP ) {
+            return t;
+        }
+        else {
+            return h;
+        }
     }
-  } else {
-    return -1000.0;
-  }
+    else {
+        return 1000.0;
+    }
 }
 
 
+float windAverage(void)
+{
+    float WindDirection = 0;
+
+    float totalX = 0.0;
+    float totalY = 0.0;
+    int count;
+
+    for (count=0; count < ReportPeriod; count++ ) {
+        totalX = (Wind[count]*sin(Wind[count])) + totalX;
+        totalY = (Wind[count]*cos(Wind[count])) + totalY;
+
+        if ( totalY == 0.0)
+            WindDirection = 0.0;
+        else
+            WindDirection = atan(totalX/totalY);
+
+        WindDirection = WindDirection / 0.01745311;         // 3.14156 / 180
+
+        if (totalX*totalY < 0.0) {
+            if (totalX < 0.0)
+                WindDirection += 180.0;
+            else
+                WindDirection += 360.0;
+        }
+        else {
+            if (totalX > 0.0) {
+                WindDirection += 180.0;
+            }
+        }
+
+    }
+    return (WindDirection);
+}
