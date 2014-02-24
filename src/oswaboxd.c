@@ -13,6 +13,7 @@
 */
 
 // TODO:
+//       Fix the average Wind Direction
 //       Provide input to calibrate the Air Pressure
 //       Create function to turn AD reading into degrees +- ture north
 //       Create array to calculate hourly moving averages, wind, rain...
@@ -80,24 +81,27 @@ void signal_handler(int);
 //
 // Global program variables
 //
-int KeepAlive = 1;                                          // Loop while true - Signal can change this
-volatile unsigned long RainCount = 0;                       // Interupt counter for tipping bucket 0.011 inches per event
-volatile unsigned long WindCount = 0;                       // Interupt counter for wind speed s 1.492 mph per event
-int GPSflag = 0;                                            // collect GPS data
-int debugFlag = 0;                                          // Output debug inforamtion to syslog daemon file
-int CollectionPeriod = 5;                                   // delay between observation collections in seconds
-int ReportPeriod = 60;                                      // report results every X collectionPeriods 5*20=300 (5 min)
-int BMP085_mode = 2;                                        // 0=LOW POWER 1=STANDARD 2=HIGH RESOLUTION 3=ULTRA HIGH RESOLUTION
-int ADSamples = 10;                                         // number of read samples to average on the AD converter
-int NPFlag = 0;                                             // write obs to named pipe
 char GPShost[20] = "127.0.0.1";                             // Host IP for GPSd data
 char GPSport[20] = "2947";                                  // Host PORT number for GPSd data
 char *BMP085_device = "/dev/i2c-0";                         // Linux device for I2C buss
 char BMP085_i2cAddress = 0x77;                              // Device number on I2C buss for BMP085
 char *NamedPipe = "/tmp/OSWABoxPipe";                       // Named Pipe for CSV output
+
+int KeepAlive = 1;                                          // Loop while true - Signal can change this
+volatile unsigned long RainCount = 0;                       // Interupt counter for tipping bucket 0.011 inches per event
+volatile unsigned long WindCount = 0;                       // Interupt counter for wind speed s 1.492 mph per event
+int GPSflag = 0;                                            // collect GPS data
+int debugFlag = 0;                                          // Output debug inforamtion to syslog daemon file
+int humidityFlag = 1;
+int CollectionPeriod = 5;                                   // delay between observation collections in seconds
+int ReportPeriod = 60;                                      // report results every X collectionPeriods 5*20=300 (5 min)
+int BMP085_mode = 2;                                        // 0=LOW POWER 1=STANDARD 2=HIGH RESOLUTION 3=ULTRA HIGH RESOLUTION
+int ADSamples = 10;                                         // number of read samples to average on the AD converter
+int NPFlag = 0;                                             // write obs to named pipe
 struct gps_data_t gpsdata;
 static int dht22_dat[5] = {0,0,0,0,0};
 float WindDir[100];                                         // Array use to average wind direction for on period
+
 struct statsRecord                                          // Structure use to write statistics record
 {
     time_t eventTime;
@@ -125,7 +129,7 @@ int main(int argc, char **argv)
     float CurrentLatitude = 0;                              // The station's location
     float CurrentLongitude = 0;
     float CurrentAltitude = 0;
-    float AveragedAltitude = -9999.0;
+//    float AveragedAltitude = 0;
 
     float CurrentTemperature = 0;                           // Current temperature in Centragrade
     float CurrentHumidity = 0;                              // Current humidity
@@ -140,8 +144,8 @@ int main(int argc, char **argv)
 
     float ADAccumulation[8];                                // Current values of AD convert 0-7
 
-    int altitudePointer = 0;                                // Array to average the last 100 altitude readings 
-    float altitudeAverage[100];
+//    int altitudePointer = 0;                                // Array to average the last 100 altitude readings 
+//    float altitudeAverage[100];
 
     parse_opts(argc,argv);                                  // check for command line arguments
 
@@ -162,7 +166,10 @@ int main(int argc, char **argv)
         fprintf (stderr, "Unable to setup ISR: %s\n", strerror (errno));
         exit(EXIT_FAILURE);
     }
-    stats.tempHigh = -9999.0;                               // Set imposible numbers to start
+    CurrentTemperature = -9999.0;                            // Set imposible numbers to start
+    CurrentHumidity = -9999.0;
+    CurrentPressure = -9999.0;
+    stats.tempHigh = -9999.0;
     stats.tempLow = 9999.0;
     stats.highWind = -1.0;
     stats.highWindDir = -1.0;
@@ -213,6 +220,8 @@ int main(int argc, char **argv)
     //
     while (KeepAlive) {
         for (ReportLoop=0; ReportLoop<ReportPeriod; ReportLoop++) {
+            if ( ! KeepAlive )                              // Check if we should bugger off
+                break;
             if (debugFlag > 1) {
                 sprintf(printBuffer, "DEBUG: Collecting Observations %d", ReportLoop+1);
                 syslog(LOG_NOTICE, printBuffer);
@@ -232,12 +241,16 @@ int main(int argc, char **argv)
                 stats.tempHigh = CurrentTemperature;
             if ( CurrentTemperature < stats.tempLow )       // Capture Daily Low Temp
                 stats.tempLow = CurrentTemperature;
+
             //
             // Humidity
             //
-            do {
-                CurrentHumidity = read_dht22_dat(0);        // Read the current Humidity
-            } while ( CurrentHumidity > 900.00 );
+            if(humidityFlag) {
+                do {
+                    CurrentHumidity = read_dht22_dat(0);    // Read the current Humidity
+                } while ( CurrentHumidity > 900.00 );
+            }
+
             //
             // Wind
             //
@@ -245,7 +258,7 @@ int main(int argc, char **argv)
             WindDir[ReportLoop] = WindDirectionAccumulation;
             WindDirection = windAverage();
             if (debugFlag > 1) {
-                sprintf(printBuffer, "DEBUG: Windspeed reading %d=%6.2f  Average=%6.2f", ReportLoop+1,WindDirectionAccumulation,WindDirection);
+                sprintf(printBuffer, "DEBUG: Wind Direction reading %d=%6.2f  Average=%6.2f", ReportLoop+1,WindDirectionAccumulation,WindDirection);
                 syslog(LOG_NOTICE, printBuffer);
             }
 
@@ -265,6 +278,7 @@ int main(int argc, char **argv)
             stats.dailyPrecip += RainAccumulation;          // Accumulate the daily rain total
 
             digitalWrite (LED_PIN, LOW) ;                   // LED Off
+
             //
             // Data read only once per reporting period
             //
@@ -273,58 +287,64 @@ int main(int argc, char **argv)
                 // These readings only need to be collected once per reporting period
                 //
                 digitalWrite (LED_PIN, HIGH) ;              // LED On
+
                 //
                 // Time
                 //
                 currTime = time(NULL);                      // Current Time from System
                 localTime = localtime(&currTime);
-                sprintf(CurrentTime,"20%02d:%02d:%02dT%02d:%02d:%02d",
+                sprintf(CurrentTime,"20%02d:%02d:%02dT%02d:%02d:%02d.00Z",
                     localTime->tm_year-100, localTime->tm_mon+1, localTime->tm_mday,
                     localTime->tm_hour, localTime->tm_min, localTime->tm_sec);
+
                 //
                 // GPS
                 //
                 if (GPSflag) {                              // Get GPS information
                     if (gps_open(GPShost, GPSport, &gpsdata) != 0) {
                         syslog(LOG_NOTICE, "ERROR: connecting to gpsd");
-                        exit(EXIT_FAILURE);
-                    }
-                    gps_stream(&gpsdata, WATCH_ENABLE, NULL);
-                    DONE = 0;
-                    while( ! DONE) {
-                        if ( !gps_waiting(&gpsdata, 500000) ) {
-                            syslog(LOG_NOTICE,"ERROR: GPS Timmed out");
-                            DONE = 1;
-                        }
-                        else {
-                            if (debugFlag > 1 )
-                                syslog(LOG_NOTICE, "Reading GPS information");
-                            gps_read(&gpsdata);
-                            if( gpsdata.fix.mode > STATUS_NO_FIX ) {
-                                unix_to_iso8601(gpsdata.fix.time, CurrentTime, sizeof(CurrentTime));
-                                CurrentLatitude = gpsdata.fix.latitude;
-                                CurrentLongitude = gpsdata.fix.longitude;
-                                CurrentAltitude = gpsdata.fix.altitude;
-                                altitudeAverage[altitudePointer] = gpsdata.fix.altitude;
-				altitudePointer = (altitudePointer + 1 ) % 100;
+                    } else {
+                        gps_stream(&gpsdata, WATCH_ENABLE, NULL);
+                        DONE = 0;
+                        while( ! DONE) {
+                            if ( !gps_waiting(&gpsdata, 500000) ) {
+                                syslog(LOG_NOTICE,"ERROR: GPS Timmed out");
                                 DONE = 1;
+                            } else {
+                                if (debugFlag > 1 )
+                                    syslog(LOG_NOTICE, "Reading GPS information");
+                                gps_read(&gpsdata);
+                                if( gpsdata.fix.mode > STATUS_NO_FIX ) {
+                                    unix_to_iso8601(gpsdata.fix.time, CurrentTime, sizeof(CurrentTime));
+                                    CurrentLatitude = gpsdata.fix.latitude;
+                                    CurrentLongitude = gpsdata.fix.longitude;
+                                    CurrentAltitude = gpsdata.fix.altitude;
+//                                  altitudeAverage[altitudePointer] = gpsdata.fix.altitude;
+//                                  altitudePointer = (altitudePointer + 1 ) % 100;
+                                    DONE = 1;
+                                }
                             }
                         }
+                        gps_close(&gpsdata);
                     }
-                    gps_stream(&gpsdata, WATCH_DISABLE, NULL);
-                    gps_close(&gpsdata);
                 }
-                if (AveragedAltitude == -9999.0 && altitudePointer == 0) {
-                    int i;
-                    for (i=0; i<100; i++) 
-			AveragedAltitude += altitudeAverage[i];
-                    AveragedAltitude = AveragedAltitude / 100.0;
-                }
-	
+//                if (AveragedAltitude == -9999.0 && altitudePointer == 0) {
+//                    int i;
+//                    for (i=0; i<100; i++) 
+//			AveragedAltitude += altitudeAverage[i];
+//                    AveragedAltitude = AveragedAltitude / 100.0;
+//                } else {
+//                    int i;
+//                    for(i=0; i<altitudePointer; i++)
+//                        AveragedAltitude += altitudeAverage[i];
+//                    AveragedAltitude = AveragedAltitude / altitudePointer; 
+//                }	
+
                 //
                 // Air Pressure
                 //
                 CurrentPressure = pressure(0) ;             // Read Air Pressure
+
                 //
                 // Air Quality
                 //
@@ -348,8 +368,8 @@ int main(int argc, char **argv)
                     syslog(LOG_NOTICE, printBuffer);
                     sprintf(printBuffer, "DEBUG: Current Altitude %6.2f", CurrentAltitude);
                     syslog(LOG_NOTICE, printBuffer);
-                    sprintf(printBuffer, "DEBUG: Averaged GPS Altitude %6.2f", AveragedAltitude);
-                    syslog(LOG_NOTICE, printBuffer);
+//                    sprintf(printBuffer, "DEBUG: Averaged GPS Altitude %6.2f", AveragedAltitude);
+//                    syslog(LOG_NOTICE, printBuffer);
                     sprintf(printBuffer, "DEBUG: Current Temperature = %6.2f", CurrentTemperature);
                     syslog(LOG_NOTICE, printBuffer);
                     sprintf(printBuffer, "DEBUG: Daily High Temperature = %6.2f", stats.tempHigh);
@@ -387,7 +407,7 @@ int main(int argc, char **argv)
                     int fH;
                     fH = open(NamedPipe,O_WRONLY);
                     if (fH<0) {
-                        syslog (LOG_NOTICE, "Failed to open named pipe /tmp/OSWABoxPipe\n");
+                        syslog (LOG_NOTICE, "ERROR: Failed to open named pipe /tmp/OSWABoxPipe\n");
                         exit(EXIT_FAILURE);
                     }
                     sprintf(printBuffer,"%s,%4.4f,%4.4f,%6.4f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f\n",
@@ -405,7 +425,7 @@ int main(int argc, char **argv)
             //
             fileHandle = fopen("/tmp/oswaboxStats", "w+b"); // Write stats data to file
             if (fileHandle == NULL) {
-                syslog (LOG_NOTICE, "Failed to open /tmp/oswaboxStats\n");
+                syslog (LOG_NOTICE, "ERROR: Failed to open /tmp/oswaboxStats\n");
                 exit(EXIT_FAILURE);
             }
             else {
@@ -439,7 +459,11 @@ int main(int argc, char **argv)
 //
 float pressure(int temp)
 {
-    int fileDescriptor;
+    int fileDescriptor = open(BMP085_device, O_RDWR);
+    if (fileDescriptor < 0) {
+        syslog (LOG_NOTICE, "ERROR: Failed to open i2c device!\n");
+        return -9999.0;
+    }
 
     BMP085 *sensor;
     sensor = (BMP085 *) malloc(sizeof(BMP085));
@@ -447,24 +471,18 @@ float pressure(int temp)
     sensor->i2cAddress = BMP085_i2cAddress;
     sensor->oss = BMP085_mode;
 
-    fileDescriptor = open(BMP085_device, O_RDWR);
-    if (fileDescriptor < 0) {
-        syslog (LOG_NOTICE, "Failed to open i2c device!\n");
-        exit(EXIT_FAILURE);
-    }
-
     if (ioctl(fileDescriptor, I2C_SLAVE, sensor->i2cAddress) < 0) {
-        syslog (LOG_NOTICE, "Failed to select BMP085 i2c device!\n");
+        syslog (LOG_NOTICE, "ERROR: Failed to select BMP085 i2c device!\n");
         exit(EXIT_FAILURE);
     }
 
     if ( ! readCalibrationTable(fileDescriptor,sensor)) {
-        syslog (LOG_NOTICE, "Failed to read BMP085 calibration table!\n");
+        syslog (LOG_NOTICE, "ERROR: Failed to read BMP085 calibration table!\n");
         exit(EXIT_FAILURE);
     }
 
     if ( debugFlag > 1)
-        syslog (LOG_NOTICE, "Reading BMP085 pressure sensor");
+        syslog (LOG_NOTICE, "DEBUG: Reading BMP085 pressure sensor");
 
     makeMeasurement(fileDescriptor,sensor);
 
@@ -564,7 +582,7 @@ long readadc(int adcnum)
     buff[1] += adcnum << 4 ;
 
     if ( debugFlag > 2)
-        syslog (LOG_NOTICE, "Reading MCP3008 AD value");
+        syslog (LOG_NOTICE, "DEBUG: Reading MCP3008 AD value");
 
     wiringPiSPIDataRW(0, buff, 3);
 
@@ -696,19 +714,20 @@ void parse_opts(int argc, char *argv[])
             { "BMP085", required_argument, NULL, 'B' },
             { "debug", required_argument, NULL, 'd' },
             { "gps",required_argument, NULL, 'g' },
-            { "host",required_argument, NULL, 'H' },
-            { "help", no_argument, NULL, 'h' },
+            { "host",required_argument, NULL, 'h' },
+            { "NoHmt",no_argument, NULL, 'H' },
             { "namedpipe", no_argument, NULL, 'n' },
             { "port", required_argument, NULL, 'P' },
             { "period", required_argument, NULL, 'p' },
             { "report", required_argument, NULL, 'r' },
             { "samples", required_argument, NULL, 's' },
             { "version", no_argument, NULL, 'v' },
+            { "help", no_argument, NULL, '?' },
             { NULL, 0, 0, 0 },
         };
         int c;
 
-        c = getopt_long(argc, argv, "B:d:gH:hnP:p:r:s:v", lopts, NULL);
+        c = getopt_long(argc, argv, "B:d:gh:HnP:p:r:s:v?", lopts, NULL);
 
         if (c == -1)
             break;
@@ -723,11 +742,11 @@ void parse_opts(int argc, char *argv[])
             case 'g':
                 GPSflag = 1;
                 break;
-            case 'H':
+            case 'h':
                 strcpy(GPShost, optarg);
                 break;
-            case 'h':
-                print_usage(argv[0]);
+            case 'H':
+                humidityFlag = !humidityFlag;
                 break;
             case 'n':
                 NPFlag = 1;
@@ -748,6 +767,9 @@ void parse_opts(int argc, char *argv[])
                 printf("OSWABox Version: %s\n",Version);
                 printf("     Build Date: %s\n",BuildDate);
                 exit(EXIT_FAILURE);
+            case '?':
+                print_usage(argv[0]);
+                break;
             default:
                 print_usage(argv[0]);
                 break;
@@ -762,7 +784,7 @@ void print_usage(const char *prog)
     printf("Open Source Weather and Air quality Box Daemon\n");
     printf("   Version: %s\n",Version);
     printf("Build Date: %s\n",BuildDate);
-    printf("\nUsage: %s [-BdgHhPprsv]\n", prog);
+    printf("\nUsage: %s [-BdghHPprsTv?]\n", prog);
     puts(   "  -B --BMP085 - sets the pressure measurement mode.\n"
         "             0 = ULTRA LOW POWER\n"
         "             1 = STANDARD\n"
@@ -770,8 +792,9 @@ void print_usage(const char *prog)
         "             3 = ULTRA HIGH RESOLUTION\n"
         "  -d --debug      - debug level 1=low 2=high 3=everything\n"
         "  -g --gps        - Turn on the GPS\n"
-        "  -H --host       - GPS host IP; Default 127.0.0.1\n"
-        "  -h --help       - Print this help message\n"
+        "  -h --host       - GPS host IP; Default 127.0.0.1\n"
+        "  -H --NoHmt      - Do not read the Humidity\n"
+        "  -? --help       - Print this help message\n"
         "  -n --namedpipe  - write CSV data to named pipe /tmp/OSWABoxPipe\n"
         "  -P --port       - GPS port; Default 2947\n"
         "  -p --period     - number of seconds between observations; Default 20\n"
@@ -834,10 +857,10 @@ void signal_handler(int sig)
     switch(sig) {
         case SIGHUP:
             syslog(LOG_WARNING, "Received SIGHUP signal.");
-            KeepAlive = 0;                                  // STOP, CLEANUP and DIE!
             break;
         case SIGTERM:
             syslog(LOG_WARNING, "Received SIGTERM signal.");
+            KeepAlive = 0;                                  // STOP, CLEANUP and DIE!
             break;
         default:
             syslog(LOG_WARNING, "Unhandled signal ");

@@ -59,11 +59,12 @@ pi@station:~$  sudo build/oswabox -g d
   Longitude:    -95.6212
    Latitude:     37.5333
    Altitude:    399.9000
+GPS Average:    401.9281
 Temperature:     20.7000 C      =  69.26 F
    Humitity:     17.4000 %
    Pressure:    986.1500 hPa    =  29.12 inch of mercury
- Wind Speed:      0.0000 mph
-  Direction:      0.0000
+ Wind Speed:      9.2000 mph
+  Direction:     19.0000 degrees
   Rain Fall:      0.0000 ipm
    Device 0:    731.5947 ohms
    Device 1:     21.5264 ohms
