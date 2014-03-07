@@ -86,18 +86,22 @@ char GPSport[20] = "2947";                                  // Host PORT number 
 char *BMP085_device = "/dev/i2c-0";                         // Linux device for I2C buss
 char BMP085_i2cAddress = 0x77;                              // Device number on I2C buss for BMP085
 char *NamedPipe = "/tmp/OSWABoxPipe";                       // Named Pipe for CSV output
+char *CSVFile = "/tmp/OSWABoxData";                         // Named Pipe for CSV output
+char *WeeFile = "/tmp/oswadata";
 
 int KeepAlive = 1;                                          // Loop while true - Signal can change this
 volatile unsigned long RainCount = 0;                       // Interupt counter for tipping bucket 0.011 inches per event
 volatile unsigned long WindCount = 0;                       // Interupt counter for wind speed s 1.492 mph per event
 int GPSflag = 0;                                            // collect GPS data
 int debugFlag = 0;                                          // Output debug inforamtion to syslog daemon file
-int humidityFlag = 1;
+int humidityFlag = 0;
 int CollectionPeriod = 5;                                   // delay between observation collections in seconds
 int ReportPeriod = 60;                                      // report results every X collectionPeriods 5*20=300 (5 min)
 int BMP085_mode = 2;                                        // 0=LOW POWER 1=STANDARD 2=HIGH RESOLUTION 3=ULTRA HIGH RESOLUTION
 int ADSamples = 10;                                         // number of read samples to average on the AD converter
 int NPFlag = 0;                                             // write obs to named pipe
+int CSVFlag = 0;                                            // write obs to file
+int WeeFlag = 0;                                            // write obs to file read by WeeWx 
 struct gps_data_t gpsdata;
 static int dht22_dat[5] = {0,0,0,0,0};
 float WindDir[100];                                         // Array use to average wind direction for on period
@@ -215,9 +219,11 @@ int main(int argc, char **argv)
         stats.dailyPrecip = -1.0;
     }
 
-    //
-    // Mail Loop
-    //
+//
+// Main / Outer Loop
+//
+// Make reading every CollectionPeriod - Average these reading over the ReportPeriod
+//
     while (KeepAlive) {
         for (ReportLoop=0; ReportLoop<ReportPeriod; ReportLoop++) {
             if ( ! KeepAlive )                              // Check if we should bugger off
@@ -230,26 +236,24 @@ int main(int argc, char **argv)
             digitalWrite (LED_PIN, HIGH) ;                  // LED On
 
             //
-            // Average these reading over the reporting period
+            // Temperature & Humidity
             //
+            if(humidityFlag) {
+                CurrentTemperature = pressure(1);           // Read Temperature
+            } else {
+                CurrentTemperature = read_dht22_dat(1);     // Read Temp from Humidity censor
+                CurrentHumidity = read_dht22_dat(0);        // Read Humidity
+            }
 
-            //
-            // Temperature
-            //
-            CurrentTemperature = pressure(1);               // Read Air Temperature
             if ( CurrentTemperature > stats.tempHigh )      // Capture Daily High Temp
                 stats.tempHigh = CurrentTemperature;
             if ( CurrentTemperature < stats.tempLow )       // Capture Daily Low Temp
                 stats.tempLow = CurrentTemperature;
 
             //
-            // Humidity
+            // Air Pressure
             //
-            if(humidityFlag) {
-                do {
-                    CurrentHumidity = read_dht22_dat(0);    // Read the current Humidity
-                } while ( CurrentHumidity > 900.00 );
-            }
+            CurrentPressure = pressure(0) ;             // Read Air Pressure
 
             //
             // Wind
@@ -257,7 +261,7 @@ int main(int argc, char **argv)
             WindDirectionAccumulation = -95.0;              // wind direction +- degrees true north
             WindDir[ReportLoop] = WindDirectionAccumulation;
             WindDirection = windAverage();
-            if (debugFlag > 1) {
+            if (debugFlag > 2) {
                 sprintf(printBuffer, "DEBUG: Wind Direction reading %d=%6.2f  Average=%6.2f", ReportLoop+1,WindDirectionAccumulation,WindDirection);
                 syslog(LOG_NOTICE, printBuffer);
             }
@@ -279,9 +283,26 @@ int main(int argc, char **argv)
 
             digitalWrite (LED_PIN, LOW) ;                   // LED Off
 
-            //
-            // Data read only once per reporting period
-            //
+
+            if ( WeeFlag ) {                                // Write data for the WeeWx web service
+
+                fileHandle = fopen(WeeFile,"w");
+
+                if (fileHandle == NULL) {
+                    syslog (LOG_NOTICE, "ERROR: Failed to open output file.\n");
+                    exit(EXIT_FAILURE);
+                } else {
+                    // These are keyword used by WeeWx for weather guage/station data
+                    sprintf(printBuffer,"outTemp %4.2f\nbarometer %4.2f\nwindSpeed %4.2f\nwindDir %4.2f\noutHumidity %4.2f\nrain %4.2f\n",
+                        (9.0/5.0)*CurrentTemperature+32.0, CurrentPressure / 33.86, WindAccumulation, WindDirection, CurrentHumidity, RainAccumulation);
+                    fwrite(printBuffer, strlen(printBuffer),1,fileHandle);
+                    fclose(fileHandle);
+                }
+            }
+
+//
+// This DData is read only once per reporting period
+//
             if ( ReportLoop+1 == ReportPeriod ) {           // Report Opbservations
                 //
                 // These readings only need to be collected once per reporting period
@@ -311,7 +332,7 @@ int main(int argc, char **argv)
                                 syslog(LOG_NOTICE,"ERROR: GPS Timmed out");
                                 DONE = 1;
                             } else {
-                                if (debugFlag > 1 )
+                                if (debugFlag > 2 )
                                     syslog(LOG_NOTICE, "Reading GPS information");
                                 gps_read(&gpsdata);
                                 if( gpsdata.fix.mode > STATUS_NO_FIX ) {
@@ -328,22 +349,6 @@ int main(int argc, char **argv)
                         gps_close(&gpsdata);
                     }
                 }
-//                if (AveragedAltitude == -9999.0 && altitudePointer == 0) {
-//                    int i;
-//                    for (i=0; i<100; i++) 
-//			AveragedAltitude += altitudeAverage[i];
-//                    AveragedAltitude = AveragedAltitude / 100.0;
-//                } else {
-//                    int i;
-//                    for(i=0; i<altitudePointer; i++)
-//                        AveragedAltitude += altitudeAverage[i];
-//                    AveragedAltitude = AveragedAltitude / altitudePointer; 
-//                }	
-
-                //
-                // Air Pressure
-                //
-                CurrentPressure = pressure(0) ;             // Read Air Pressure
 
                 //
                 // Air Quality
@@ -364,12 +369,10 @@ int main(int argc, char **argv)
                     syslog(LOG_NOTICE, printBuffer);
                     sprintf(printBuffer, "DEBUG: Current Longitude %6.4f", CurrentLongitude);
                     syslog(LOG_NOTICE, printBuffer);
-                    sprintf(printBuffer, "DEBUG: Rreporting Period (RP) %2d:%02d", ReportMinutes, ReportSeconds);
+                    sprintf(printBuffer, "DEBUG: Reporting Period (RP) %2d:%02d", ReportMinutes, ReportSeconds);
                     syslog(LOG_NOTICE, printBuffer);
                     sprintf(printBuffer, "DEBUG: Current Altitude %6.2f", CurrentAltitude);
                     syslog(LOG_NOTICE, printBuffer);
-//                    sprintf(printBuffer, "DEBUG: Averaged GPS Altitude %6.2f", AveragedAltitude);
-//                    syslog(LOG_NOTICE, printBuffer);
                     sprintf(printBuffer, "DEBUG: Current Temperature = %6.2f", CurrentTemperature);
                     syslog(LOG_NOTICE, printBuffer);
                     sprintf(printBuffer, "DEBUG: Daily High Temperature = %6.2f", stats.tempHigh);
@@ -400,24 +403,46 @@ int main(int argc, char **argv)
                     }
                 }
 
-                //
-                // Write the observations to the named pipe
-                //
-                if (NPFlag) {
-                    int fH;
-                    fH = open(NamedPipe,O_WRONLY);
-                    if (fH<0) {
-                        syslog (LOG_NOTICE, "ERROR: Failed to open named pipe /tmp/OSWABoxPipe\n");
+                if ( WeeFlag ) {                                // Write data for the WeeWx web service
+
+                     fileHandle = fopen(WeeFile,"w");
+
+                    if (fileHandle == NULL) {
+                        syslog (LOG_NOTICE, "ERROR: Failed to open output file.\n");
                         exit(EXIT_FAILURE);
+                    } else {
+                        // These are keyword used by WeeWx for weather guage/station data
+                        sprintf(printBuffer,"outTemp %4.2f\nbarometer %4.2f\nwindSpeed %4.2f\nwindDir %4.2f\noutHumidity %4.2f\nrain %4.2f\naltitude %4.2f\n",
+                            (9.0/5.0)*CurrentTemperature+32.0, 
+                            CurrentPressure / 33.86, 
+                            WindAccumulation, WindDirection, CurrentHumidity, RainAccumulation, CurrentAltitude);
+                        fwrite(printBuffer, strlen(printBuffer),1,fileHandle);
+                        fclose(fileHandle);
                     }
-                    sprintf(printBuffer,"%s,%4.4f,%4.4f,%6.4f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f\n",
-                        CurrentTime,CurrentLatitude,CurrentLongitude,CurrentAltitude,
-                        CurrentTemperature,CurrentHumidity,CurrentPressure,WindAccumulation,WindDirection,
-                        stats.tempHigh,stats.tempLow,stats.highWind,stats.highWindDir,
-                        ADAccumulation[0],ADAccumulation[1],ADAccumulation[2],ADAccumulation[3],
-                        ADAccumulation[4],ADAccumulation[5],ADAccumulation[6],ADAccumulation[7]);
-                    write(fH, printBuffer, strlen(printBuffer));
-                    close(fH);
+                }
+                //
+                // Write the observations to the named pipe or CSV file
+                //
+                if (NPFlag || CSVFlag) {
+                    if ( NPFlag ) 
+                        fileHandle = fopen(NamedPipe,"rw");
+
+                    if ( CSVFlag )
+                        fileHandle = fopen(CSVFile,"a+");
+
+                    if (fileHandle == NULL) {
+                        syslog (LOG_NOTICE, "ERROR: Failed to open output file.\n");
+                        exit(EXIT_FAILURE);
+                    } else {
+                        sprintf(printBuffer,"%s,%4.4f,%4.4f,%6.4f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f\n",
+                            CurrentTime,CurrentLatitude,CurrentLongitude,CurrentAltitude,
+                            CurrentTemperature,CurrentHumidity,CurrentPressure,WindAccumulation,WindDirection,
+                            stats.tempHigh,stats.tempLow,stats.highWind,stats.highWindDir,
+                            ADAccumulation[0],ADAccumulation[1],ADAccumulation[2],ADAccumulation[3],
+                            ADAccumulation[4],ADAccumulation[5],ADAccumulation[6],ADAccumulation[7]);
+                        fwrite(printBuffer, strlen(printBuffer),1,fileHandle);
+                        fclose(fileHandle);
+                    }
                 }
             }
             //
@@ -428,10 +453,8 @@ int main(int argc, char **argv)
                 syslog (LOG_NOTICE, "ERROR: Failed to open /tmp/oswaboxStats\n");
                 exit(EXIT_FAILURE);
             }
-            else {
-                fwrite(&stats, sizeof stats, 1, fileHandle);
-                fclose(fileHandle);
-            }
+            fwrite(&stats, sizeof stats, 1, fileHandle);
+            fclose(fileHandle);
 
             sleep ( CollectionPeriod );                     // Sleep until we need to collect observations again
         }
@@ -481,7 +504,7 @@ float pressure(int temp)
         exit(EXIT_FAILURE);
     }
 
-    if ( debugFlag > 1)
+    if ( debugFlag > 2)
         syslog (LOG_NOTICE, "DEBUG: Reading BMP085 pressure sensor");
 
     makeMeasurement(fileDescriptor,sensor);
@@ -712,6 +735,7 @@ void parse_opts(int argc, char *argv[])
     while (1) {
         static const struct option lopts[] = {
             { "BMP085", required_argument, NULL, 'B' },
+            { "csv", no_argument, NULL, 'c' },
             { "debug", required_argument, NULL, 'd' },
             { "gps",required_argument, NULL, 'g' },
             { "host",required_argument, NULL, 'h' },
@@ -722,12 +746,13 @@ void parse_opts(int argc, char *argv[])
             { "report", required_argument, NULL, 'r' },
             { "samples", required_argument, NULL, 's' },
             { "version", no_argument, NULL, 'v' },
+            { "weewx", no_argument, NULL, 'w' },
             { "help", no_argument, NULL, '?' },
             { NULL, 0, 0, 0 },
         };
         int c;
 
-        c = getopt_long(argc, argv, "B:d:gh:HnP:p:r:s:v?", lopts, NULL);
+        c = getopt_long(argc, argv, "B:cd:gh:HnP:p:r:s:v?", lopts, NULL);
 
         if (c == -1)
             break;
@@ -735,6 +760,9 @@ void parse_opts(int argc, char *argv[])
         switch (c) {
             case 'B':
                 BMP085_mode = atoi(optarg);
+                break;
+            case 'c':
+                CSVFlag = 1;
                 break;
             case 'd':
                 debugFlag = atoi(optarg);
@@ -746,7 +774,7 @@ void parse_opts(int argc, char *argv[])
                 strcpy(GPShost, optarg);
                 break;
             case 'H':
-                humidityFlag = !humidityFlag;
+                humidityFlag = 1;
                 break;
             case 'n':
                 NPFlag = 1;
@@ -767,6 +795,9 @@ void parse_opts(int argc, char *argv[])
                 printf("OSWABox Version: %s\n",Version);
                 printf("     Build Date: %s\n",BuildDate);
                 exit(EXIT_FAILURE);
+            case 'w':
+		WeeFlag = 1;
+                break;
             case '?':
                 print_usage(argv[0]);
                 break;
@@ -790,17 +821,19 @@ void print_usage(const char *prog)
         "             1 = STANDARD\n"
         "   Default = 2 = HIGH RESOLUTION\n"
         "             3 = ULTRA HIGH RESOLUTION\n"
+        "  -c --csv        - write stats to CSV file in /tmp\n"
         "  -d --debug      - debug level 1=low 2=high 3=everything\n"
-        "  -g --gps        - Turn on the GPS\n"
+        "  -g --gps        - turn on the GPS\n"
         "  -h --host       - GPS host IP; Default 127.0.0.1\n"
-        "  -H --NoHmt      - Do not read the Humidity\n"
-        "  -? --help       - Print this help message\n"
+        "  -H --NoHmt      - do not read the humidity and get temp from pressure censor\n"
+        "  -? --help       - print this help message\n"
         "  -n --namedpipe  - write CSV data to named pipe /tmp/OSWABoxPipe\n"
         "  -P --port       - GPS port; Default 2947\n"
         "  -p --period     - number of seconds between observations; Default 20\n"
         "  -r --report     - number of observations before a report: Default 9\n"
         "  -s --samples    - number of samples to average the AD converter: Default 10\n"
-        "  -v --version    - Print the version information\n" );
+        "  -v --version    - print the version information\n" 
+        "  -w --weewx      - write data to /temp/oswadata for the WeeWx oswabox driver");
     exit(EXIT_FAILURE);
 }
 

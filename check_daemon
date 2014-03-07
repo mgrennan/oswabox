@@ -1,0 +1,9 @@
+# Simple shell script to watch oswaboxd and restart it
+# if it dies. This line in crontab will check every two
+# minutes.
+#
+# */2 * * * * ~/check_daemon
+# 
+if [ ! "$(ps aux | grep oswaboxd | grep -v grep )" ] ; 
+sudo /usr/sbin/oswaboxd -g -w
+fi 
