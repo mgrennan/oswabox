@@ -14,7 +14,6 @@
 
 // TODO:
 //       Fix the average Wind Direction
-//       Provide input to calibrate the Air Pressure
 //       Create function to turn AD reading into degrees +- ture north
 //       Create array to calculate hourly moving averages, wind, rain...
 //		http://server.gladstonefamily.net/pipermail/wxqc/2006-July/004319.html
@@ -61,7 +60,7 @@ float pressure(int);
 float read_adc_dev(int);
 long readadc(int);
 static uint8_t sizecvt(int);
-static float read_dht22_dat(int);
+static int read_dht22_dat();
 float windAverage(void);
 void signal_handler(int);
 
@@ -72,11 +71,6 @@ void signal_handler(int);
 #define DHT_PIN  7                                          // The wiringPi pin for the RHT03
 #define WIND_PIN 0                                          // The wiringPi pin for the wind speed
 #define RAIN_PIN 1                                          // The wiringPi pin for the rain guage
-
-//
-// Application Definations
-//
-#define MAXTIMINGS 85                                       // Maximum time to wait for a state chhange in ms
 
 //
 // Global program variables
@@ -102,7 +96,11 @@ int ADSamples = 10;                                         // number of read sa
 int NPFlag = 0;                                             // write obs to named pipe
 int CSVFlag = 0;                                            // write obs to file
 int WeeFlag = 0;                                            // write obs to file read by WeeWx 
+int pressureSet = 0;
 struct gps_data_t gpsdata;
+float dht_tempature;
+float dht_humidity;
+float seaLevelPressure = 1000.0;
 static int dht22_dat[5] = {0,0,0,0,0};
 float WindDir[100];                                         // Array use to average wind direction for on period
 
@@ -115,6 +113,7 @@ struct statsRecord                                          // Structure use to 
     float highWindDir;                                      // Direction of gust
     float hourlyPrecip;
     float dailyPrecip;
+    float CurrentPressure;
 } stats;
 
 //
@@ -122,18 +121,18 @@ struct statsRecord                                          // Structure use to 
 //
 int main(int argc, char **argv)
 {
-    time_t currTime;                                        // System time
+    time_t currTime;                                        // System time in unix EPOC
     struct tm *localTime;
     FILE *fileHandle;                                       // Filesystem handle for open files
     char printBuffer[80];                                   // Array buffers
     int ReportLoop,ADLoop,DONE;
+    float pressureAdjust = 0.0;                             // Difference between reading and standard 
 
     char CurrentTime[25]  = "";                             // The current time UTC
 
     float CurrentLatitude = 0;                              // The station's location
     float CurrentLongitude = 0;
     float CurrentAltitude = 0;
-//    float AveragedAltitude = 0;
 
     float CurrentTemperature = 0;                           // Current temperature in Centragrade
     float CurrentHumidity = 0;                              // Current humidity
@@ -147,9 +146,6 @@ int main(int argc, char **argv)
     float RainAccumulation = 0;                             // Current rainfall accumulation
 
     float ADAccumulation[8];                                // Current values of AD convert 0-7
-
-//    int altitudePointer = 0;                                // Array to average the last 100 altitude readings 
-//    float altitudeAverage[100];
 
     parse_opts(argc,argv);                                  // check for command line arguments
 
@@ -207,13 +203,18 @@ int main(int argc, char **argv)
             syslog(LOG_NOTICE, printBuffer);
             sprintf(printBuffer, "DEBUG: stats:dailyPrecip = %f", stats.dailyPrecip);
             syslog(LOG_NOTICE, printBuffer);
+            sprintf(printBuffer, "DEBUG: stats:CurrentPressure = %f", stats.CurrentPressure);
+            syslog(LOG_NOTICE, printBuffer);
         }
         fclose(fileHandle);
     }
+
     if ( time(NULL) >= stats.eventTime + 3600 ) {           // Reset stats if older than one hour
         stats.highWind = -1.0;
         stats.highWindDir = -1.0;
         stats.hourlyPrecip = -1.0;
+    } else {
+        pressureSet = 1;                                    // reset the pressure offset based on the last reading
     }
     if ( time(NULL) >= stats.eventTime + 90000 ) {          // Reset stats if older than one day
         stats.dailyPrecip = -1.0;
@@ -238,12 +239,16 @@ int main(int argc, char **argv)
             //
             // Temperature & Humidity
             //
-            if(humidityFlag) {
+            if(humidityFlag) {				    // if -H set read temp from pressure censor
                 CurrentTemperature = pressure(1);           // Read Temperature
             } else {
-                CurrentTemperature = read_dht22_dat(1);     // Read Temp from Humidity censor
-                CurrentHumidity = read_dht22_dat(0);        // Read Humidity
+                if ( read_dht22_dat() ) {
+                    CurrentTemperature = dht_tempature;     // Read Temp from Humidity censor
+                    CurrentHumidity = dht_humidity;         // Read Humidity
+                }
             }
+            
+            CurrentTemperature = pressure(1);               // Read Temperature
 
             if ( CurrentTemperature > stats.tempHigh )      // Capture Daily High Temp
                 stats.tempHigh = CurrentTemperature;
@@ -253,8 +258,14 @@ int main(int argc, char **argv)
             //
             // Air Pressure
             //
-            CurrentPressure = pressure(0) ;             // Read Air Pressure
-
+            if ( pressureSet ) {                            // local/sea level pressure has been set
+                CurrentPressure = seaLevelPressure;
+                pressureAdjust = pressure(0) - seaLevelPressure;
+                pressureSet = 0;
+            } else {                                        // read air and adjust it
+                CurrentPressure = pressure(0) - pressureAdjust ;             // Read Air Pressure
+            }
+            stats.CurrentPressure = CurrentPressure;        // save the current pressure in the stats record
             //
             // Wind
             //
@@ -283,7 +294,18 @@ int main(int argc, char **argv)
 
             digitalWrite (LED_PIN, LOW) ;                   // LED Off
 
+            //
+            // Time
+            //
+            currTime = time(NULL);                      // Current Time from System
+            localTime = localtime(&currTime);
+            sprintf(CurrentTime,"20%02d:%02d:%02dT%02d:%02d:%02d.00Z",
+                localTime->tm_year-100, localTime->tm_mon+1, localTime->tm_mday,
+                localTime->tm_hour, localTime->tm_min, localTime->tm_sec);
 
+            //
+            // Output for the WeeWx weather station software
+            //
             if ( WeeFlag ) {                                // Write data for the WeeWx web service
 
                 fileHandle = fopen(WeeFile,"w");
@@ -293,8 +315,11 @@ int main(int argc, char **argv)
                     exit(EXIT_FAILURE);
                 } else {
                     // These are keyword used by WeeWx for weather guage/station data
-                    sprintf(printBuffer,"outTemp %4.2f\nbarometer %4.2f\nwindSpeed %4.2f\nwindDir %4.2f\noutHumidity %4.2f\nrain %4.2f\n",
-                        (9.0/5.0)*CurrentTemperature+32.0, CurrentPressure / 33.86, WindAccumulation, WindDirection, CurrentHumidity, RainAccumulation);
+                    sprintf(printBuffer,"dateTime %lu\noutTemp %4.2f\nbarometer %4.2f\nwindSpeed %4.2f\n",
+                       time(NULL), (9.0/5.0)*CurrentTemperature+32.0, CurrentPressure / 33.86, WindAccumulation );
+                    fwrite(printBuffer, strlen(printBuffer),1,fileHandle);
+                    sprintf(printBuffer,"windDir %4.2f\noutHumidity %4.2f\nrain %4.2f\n",
+                       WindDirection, CurrentHumidity, RainAccumulation);
                     fwrite(printBuffer, strlen(printBuffer),1,fileHandle);
                     fclose(fileHandle);
                 }
@@ -308,15 +333,6 @@ int main(int argc, char **argv)
                 // These readings only need to be collected once per reporting period
                 //
                 digitalWrite (LED_PIN, HIGH) ;              // LED On
-
-                //
-                // Time
-                //
-                currTime = time(NULL);                      // Current Time from System
-                localTime = localtime(&currTime);
-                sprintf(CurrentTime,"20%02d:%02d:%02dT%02d:%02d:%02d.00Z",
-                    localTime->tm_year-100, localTime->tm_mon+1, localTime->tm_mday,
-                    localTime->tm_hour, localTime->tm_min, localTime->tm_sec);
 
                 //
                 // GPS
@@ -340,8 +356,6 @@ int main(int argc, char **argv)
                                     CurrentLatitude = gpsdata.fix.latitude;
                                     CurrentLongitude = gpsdata.fix.longitude;
                                     CurrentAltitude = gpsdata.fix.altitude;
-//                                  altitudeAverage[altitudePointer] = gpsdata.fix.altitude;
-//                                  altitudePointer = (altitudePointer + 1 ) % 100;
                                     DONE = 1;
                                 }
                             }
@@ -405,21 +419,23 @@ int main(int argc, char **argv)
 
                 if ( WeeFlag ) {                                // Write data for the WeeWx web service
 
-                     fileHandle = fopen(WeeFile,"w");
+                    fileHandle = fopen(WeeFile,"w");
 
                     if (fileHandle == NULL) {
                         syslog (LOG_NOTICE, "ERROR: Failed to open output file.\n");
                         exit(EXIT_FAILURE);
                     } else {
                         // These are keyword used by WeeWx for weather guage/station data
-                        sprintf(printBuffer,"outTemp %4.2f\nbarometer %4.2f\nwindSpeed %4.2f\nwindDir %4.2f\noutHumidity %4.2f\nrain %4.2f\naltitude %4.2f\n",
-                            (9.0/5.0)*CurrentTemperature+32.0, 
-                            CurrentPressure / 33.86, 
-                            WindAccumulation, WindDirection, CurrentHumidity, RainAccumulation, CurrentAltitude);
+                        sprintf(printBuffer,"dateTime %lu\noutTemp %4.2f\nbarometer %4.2f\nwindSpeed %4.2f\n",
+                            time(NULL), (9.0/5.0)*CurrentTemperature+32.0, CurrentPressure / 33.86, WindAccumulation);
+                        fwrite(printBuffer, strlen(printBuffer),1,fileHandle);
+                        sprintf(printBuffer,"windDir %4.2f\noutHumidity %4.2f\nrain %4.2f\naltitude %4.2f\n",
+                            WindDirection, CurrentHumidity, RainAccumulation, CurrentAltitude);
                         fwrite(printBuffer, strlen(printBuffer),1,fileHandle);
                         fclose(fileHandle);
                     }
                 }
+
                 //
                 // Write the observations to the named pipe or CSV file
                 //
@@ -434,17 +450,22 @@ int main(int argc, char **argv)
                         syslog (LOG_NOTICE, "ERROR: Failed to open output file.\n");
                         exit(EXIT_FAILURE);
                     } else {
-                        sprintf(printBuffer,"%s,%4.4f,%4.4f,%6.4f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f\n",
+                        sprintf(printBuffer,"%s,%4.4f,%4.4f,%6.4f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f",
                             CurrentTime,CurrentLatitude,CurrentLongitude,CurrentAltitude,
-                            CurrentTemperature,CurrentHumidity,CurrentPressure,WindAccumulation,WindDirection,
+                            CurrentTemperature,CurrentHumidity,CurrentPressure,WindAccumulation,WindDirection);
+                        fwrite(printBuffer, strlen(printBuffer),1,fileHandle);
+
+                        sprintf(printBuffer,",%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f\n",
                             stats.tempHigh,stats.tempLow,stats.highWind,stats.highWindDir,
                             ADAccumulation[0],ADAccumulation[1],ADAccumulation[2],ADAccumulation[3],
                             ADAccumulation[4],ADAccumulation[5],ADAccumulation[6],ADAccumulation[7]);
                         fwrite(printBuffer, strlen(printBuffer),1,fileHandle);
+
                         fclose(fileHandle);
                     }
                 }
             }
+
             //
             // Save Current Stats
             //
@@ -630,67 +651,59 @@ static uint8_t sizecvt(const int read)
 }
 
 
-float read_dht22_dat(int TEMP)
+int read_dht22_dat()
 {
     uint8_t laststate = HIGH;
     uint8_t counter = 0;
     uint8_t j = 0, i;
+    int tries = 3;
 
-    dht22_dat[0] = dht22_dat[1] = dht22_dat[2] = dht22_dat[3] = dht22_dat[4] = 0;
+    while ( tries ) {
+        dht22_dat[0] = dht22_dat[1] = dht22_dat[2] = dht22_dat[3] = dht22_dat[4] = 0;
 
-    pinMode(DHT_PIN, OUTPUT);                               // pull pin down for 18 milliseconds
-    digitalWrite(DHT_PIN, HIGH);
-    delay(10);
-    digitalWrite(DHT_PIN, LOW);
-    delay(18);
-    digitalWrite(DHT_PIN, HIGH);                            // then pull it up for 40 microseconds
-    delayMicroseconds(40);
-    pinMode(DHT_PIN, INPUT);                                // prepare to read the pin
+        pinMode(DHT_PIN, OUTPUT);
+        digitalWrite(DHT_PIN, HIGH);                            // start pin high for some time
+        delay(40);
+        digitalWrite(DHT_PIN, LOW);                             // pull pin down for 18 miliseconds
+        delay(10);
+        digitalWrite(DHT_PIN, HIGH);                            // then pull it up for 40 microseconds
+        delayMicroseconds(30);
 
-    for ( i=0; i< MAXTIMINGS; i++) {                        // detect change and read data
-        counter = 0;
-        while (sizecvt(digitalRead(DHT_PIN)) == laststate) {
-            counter++;
-            delayMicroseconds(1);
-            if (counter == 255) {
-                break;
+        pinMode(DHT_PIN, INPUT);                                // prepare to read the pin
+        for ( i=0; i< 85; i++) {                                // detect change and read data
+            counter = 0;
+            while (sizecvt(digitalRead(DHT_PIN)) == laststate) {
+                counter++;
+                delayMicroseconds(1);
+                if (counter == 255) {
+                    break;
+                }
+            }
+            laststate = sizecvt(digitalRead(DHT_PIN));
+
+            if (counter == 255) break;
+
+            if ((i >= 4) && (i%2 == 0)) {                  // ignore first 3 transitions
+                dht22_dat[j/8] <<= 1;                      // shove each bit into the storage bytes
+                if (counter > 16)
+                    dht22_dat[j/8] |= 1;
+                j++;
             }
         }
-        laststate = sizecvt(digitalRead(DHT_PIN));
 
-        if (counter == 255) break;
+        // check we read 40 bits (8bit x 5 ) + verify checksum in the last byte
+        if ((j >= 40) && (dht22_dat[4] == ((dht22_dat[0] + dht22_dat[1] + dht22_dat[2] + dht22_dat[3]) & 0xFF)) ) {
 
-        // ignore first 3 transitions
-        if ((i >= 4) && (i%2 == 0)) {
-            // shove each bit into the storage bytes
-            dht22_dat[j/8] <<= 1;
-            if (counter > 16)
-                dht22_dat[j/8] |= 1;
-            j++;
+            dht_humidity = ((float)dht22_dat[0] * 256 + (float)dht22_dat[1]) / 10.0;
+            dht_tempature = ((float)(dht22_dat[2] & 0x7F)* 256 + (float)dht22_dat[3]) / 10.0;
+
+            if ((dht22_dat[2] & 0x80) != 0)  dht_tempature *= -1;
+
+            return 1;
         }
+        tries--;
     }
-
-    // check we read 40 bits (8bit x 5 ) + verify checksum in the last byte
-    // print it out if data is good
-    if ((j >= 40) &&
-    (dht22_dat[4] == ((dht22_dat[0] + dht22_dat[1] + dht22_dat[2] + dht22_dat[3]) & 0xFF)) ) {
-        float t, h;
-        h = (float)dht22_dat[0] * 256 + (float)dht22_dat[1];
-        h /= 10;
-        t = (float)(dht22_dat[2] & 0x7F)* 256 + (float)dht22_dat[3];
-        t /= 10.0;
-        if ((dht22_dat[2] & 0x80) != 0)  t *= -1;
-
-        if ( TEMP ) {
-            return t;
-        }
-        else {
-            return h;
-        }
-    }
-    else {
-        return 1000.0;
-    }
+    return 0;
 }
 
 
@@ -752,7 +765,7 @@ void parse_opts(int argc, char *argv[])
         };
         int c;
 
-        c = getopt_long(argc, argv, "B:cd:gh:HnP:p:r:s:v?", lopts, NULL);
+        c = getopt_long(argc, argv, "B:cd:gh:HnP:p:r:s:S:vw?", lopts, NULL);
 
         if (c == -1)
             break;
@@ -790,6 +803,10 @@ void parse_opts(int argc, char *argv[])
                 break;
             case 's':
                 ADSamples = atoi(optarg);
+                break;
+            case 'S':
+                pressureSet = 1;
+                seaLevelPressure = atof(optarg);
                 break;
             case 'v':
                 printf("OSWABox Version: %s\n",Version);
@@ -832,6 +849,7 @@ void print_usage(const char *prog)
         "  -p --period     - number of seconds between observations; Default 20\n"
         "  -r --report     - number of observations before a report: Default 9\n"
         "  -s --samples    - number of samples to average the AD converter: Default 10\n"
+        "  -S --sealevel   - local air pressure setting above sealevel\n"
         "  -v --version    - print the version information\n" 
         "  -w --weewx      - write data to /temp/oswadata for the WeeWx oswabox driver");
     exit(EXIT_FAILURE);
