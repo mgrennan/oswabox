@@ -1,4 +1,4 @@
-/*
+	/*
 // oswaboxd - Open Source Weather and Air quality daemon
 //    Copyright: Mark Grennan - 2014/02/06
 //
@@ -101,7 +101,7 @@ struct gps_data_t gpsdata;
 float dht_tempature;
 float dht_humidity;
 float seaLevelPressure = 1000.0;
-static int dht22_dat[5] = {0,0,0,0,0};
+static uint8_t dht22_dat[5] = {0,0,0,0,0};
 float WindDir[100];                                         // Array use to average wind direction for on period
 
 struct statsRecord                                          // Structure use to write statistics record
@@ -242,6 +242,9 @@ int main(int argc, char **argv)
             if(humidityFlag) {				    // if -H set read temp from pressure censor
                 CurrentTemperature = pressure(1);           // Read Temperature
             } else {
+                if (debugFlag > 2) {
+                    syslog (LOG_NOTICE, "DEBUG: Reading DHT");
+                }
                 if ( read_dht22_dat() ) {
                     CurrentTemperature = dht_tempature;     // Read Temp from Humidity censor
                     CurrentHumidity = dht_humidity;         // Read Humidity
@@ -273,7 +276,7 @@ int main(int argc, char **argv)
             WindDir[ReportLoop] = WindDirectionAccumulation;
             WindDirection = windAverage();
             if (debugFlag > 2) {
-                sprintf(printBuffer, "DEBUG: Wind Direction reading %d=%6.2f  Average=%6.2f", ReportLoop+1,WindDirectionAccumulation,WindDirection);
+                sprintf(printBuffer, "DEBUG: Wind Direction reading #%d=%6.2f  Average=%6.2f", ReportLoop+1,WindDirectionAccumulation,WindDirection);
                 syslog(LOG_NOTICE, printBuffer);
             }
 
@@ -655,17 +658,19 @@ int read_dht22_dat()
 {
     uint8_t laststate = HIGH;
     uint8_t counter = 0;
-    uint8_t j = 0, i;
-    int tries = 3;
+    uint8_t j , i;
+    int tries = 1;
+    char printBuffer[80];                                   // Array buffers
 
-    while ( tries ) {
+    while ( tries < 9 ) {
+        j = 0;
         dht22_dat[0] = dht22_dat[1] = dht22_dat[2] = dht22_dat[3] = dht22_dat[4] = 0;
 
         pinMode(DHT_PIN, OUTPUT);
         digitalWrite(DHT_PIN, HIGH);                            // start pin high for some time
-        delay(40);
+        delayMicroseconds(40);
         digitalWrite(DHT_PIN, LOW);                             // pull pin down for 18 miliseconds
-        delay(10);
+        delayMicroseconds(10);
         digitalWrite(DHT_PIN, HIGH);                            // then pull it up for 40 microseconds
         delayMicroseconds(30);
 
@@ -681,14 +686,18 @@ int read_dht22_dat()
             }
             laststate = sizecvt(digitalRead(DHT_PIN));
 
-            if (counter == 255) break;
-
             if ((i >= 4) && (i%2 == 0)) {                  // ignore first 3 transitions
-                dht22_dat[j/8] <<= 1;                      // shove each bit into the storage bytes
-                if (counter > 16)
-                    dht22_dat[j/8] |= 1;
+                dht22_dat[j/8] <<= 1;                      // move over the last bit set
+                if (counter > 27)
+                    dht22_dat[j/8] |= 1;		   // if it took 28us to see transition set bit high
                 j++;
             }
+        }
+
+        if (debugFlag > 2) {
+            sprintf(printBuffer, "DEBUG: DHT try #%d returned %d:%d:%d:%d:%d", 
+                tries,dht22_dat[0], dht22_dat[1], dht22_dat[2], dht22_dat[3], dht22_dat[4]);
+            syslog (LOG_NOTICE, printBuffer);
         }
 
         // check we read 40 bits (8bit x 5 ) + verify checksum in the last byte
@@ -701,7 +710,8 @@ int read_dht22_dat()
 
             return 1;
         }
-        tries--;
+        sleep(1);
+        tries++;
     }
     return 0;
 }
