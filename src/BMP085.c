@@ -36,7 +36,7 @@ int measureTemperature = 0;
 int measurePressure = 1;
 int Altitude = 0;
 int printSensorCalibrationTable = 0;
-float seaLevelPressure = 101325 ; 		// sealevel pressure in hPa * 100
+float seaLevelPressure = 100000.0 ; 		// sealevel pressure in hPa * 100
 int mode = 1;
 
 
@@ -88,9 +88,12 @@ int main(int argc, char **argv)
 
 	makeMeasurement(fileDescriptor,sensor);
 	if (measurePressure)
-		printf("   Pressure: % 11.4f hPa\t=% 5.2f inch of mercury\n",(float)sensor->pressure/100.0,(sensor->pressure /100.0) * 0.02953);
+		printf("   Pressure: % 11.4f hPa\t=% 5.2f inch of mercury\n",
+                    ((float)sensor->pressure/ 100.0),((float)sensor->pressure / 100.0) * 0.02953);
+
 	if (measureTemperature)
-		printf("Temperature: % 11.4f C\t=% 5.2f F\n",sensor->temperature, (sensor->temperature * 1.8) + 32);
+	        printf("Temperature: % 11.4f C\t=% 5.2f F\n",sensor->temperature, (sensor->temperature * 1.8) + 32);
+
 	if (Altitude)
 		printf("   Altitude: % 11.4f m\t=% .2f f\n",44330.0 * (1.0 - pow(sensor->pressure / seaLevelPressure, 0.1903)),
 			44330.0 * (1.0 - pow(sensor->pressure / seaLevelPressure, 0.1903)) * 3.2808);
@@ -111,14 +114,14 @@ void print_usage(const char *prog)
         puts("  -a --address\t\t sets the I2C bus address of the BMP085 sensor;\n"
 	     "  -A --altitude\t\t calcluate and print the altitude;\n"
              "  -d --device\t\t set the I2C device (defualt is /dev/i2c-0);\n"
-             "  -t --table\t\t print callibration table;\n"
-             "  -T --temperature\t measure temperature and print the value in C;\n"
-             "  -p --pressure\t\t measure the atmospheric pressure and print the value;\n"
 	     "  -m --mode\t\t sets the measurement mode. Default value 1 = STANDARD. Allowed values:\n"
 	     "                                            0 = ULTRA LOW POWER\n"
              "                                            1 = STANDARD\n"
              "                                            2 = HIGH RESOLUTION\n"
-             "                                            3 = ULTRA HIGH RESOLUTION\n");
+             "                                            3 = ULTRA HIGH RESOLUTION\n"
+             "  -p --pressure\t\t measure the atmospheric pressure and print the value;\n"
+             "  -t --table\t\t print callibration table;\n"
+             "  -T --temperature\t measure temperature and print the value in C;\n");
 	    		
 	exit(1);
 }
@@ -126,7 +129,7 @@ void print_usage(const char *prog)
 void parse_opts(int argc, char *argv[])
 {
         while (1) {
-                static const struct option lopts[] = {
+                const struct option lopts[] = {
                         { "address", required_argument, NULL, 'a' },
 			{ "altitude",no_argument, NULL, 'A' },
                         { "device", required_argument, NULL, 'd' },
@@ -138,7 +141,7 @@ void parse_opts(int argc, char *argv[])
                 };
                 int c;
 
-                c = getopt_long(argc, argv, "Aa:d:m:tTp", lopts, NULL);
+                c = getopt_long(argc, argv, "Aa:d:m:tTps:", lopts, NULL);
 
                 if (c == -1)
                         break;
