@@ -1,6 +1,6 @@
-	/*
+/*
 // oswaboxd - Open Source Weather and Air quality daemon
-//    Copyright: Mark Grennan - 2014/02/06
+//    Copyright: Mark Grennan - 2014/03/12
 //
 //    This program run in the background as a daemon and collect weather
 // and air quality information from the OSWABox hardware on connected
@@ -14,10 +14,9 @@
 
 // TODO:
 //       Fix the average Wind Direction
-//       Create function to turn AD reading into degrees +- ture north
+//       Create function to turn AtoD reading into degrees +- ture north
 //       Create array to calculate hourly moving averages, wind, rain...
 //		http://server.gladstonefamily.net/pipermail/wxqc/2006-July/004319.html
-//       Create shared memroy of weather data.
 //       Create network API to request fetch current condations in JSON format.
 //       Create output to The Citizen Weather Observer Program (CWOP).
 
@@ -53,16 +52,17 @@ extern void makeMeasurement(int, BMP085 *);
 
 void print_usage(const char *);
 void parse_opts(int argc, char *argv[]);
-static void become_daemon() ;
+void become_daemon() ;
 void RainInterrupt(void);
 void WindInterrupt(void);
 float pressure(int);
 float read_adc_dev(int);
 long readadc(int);
-static uint8_t sizecvt(int);
-static int read_dht22_dat();
+uint8_t sizecvt(int);
+int read_dht22_dat();
 float windAverage(void);
 void signal_handler(int);
+float ohms2lux(float);
 
 //
 // GPIO pin decrelations
@@ -71,6 +71,11 @@ void signal_handler(int);
 #define DHT_PIN  7                                          // The wiringPi pin for the RHT03
 #define WIND_PIN 0                                          // The wiringPi pin for the wind speed
 #define RAIN_PIN 1                                          // The wiringPi pin for the rain guage
+#define TGS2600 0					    // ADA pins
+#define MiSC2710 1
+#define MiSC5525 2
+#define Sound 3
+#define WindRaw 4
 
 //
 // Global program variables
@@ -84,8 +89,8 @@ char *CSVFile = "/tmp/OSWABoxData";                         // Named Pipe for CS
 char *WeeFile = "/tmp/oswadata";
 
 int KeepAlive = 1;                                          // Loop while true - Signal can change this
-volatile unsigned long RainCount = 0;                       // Interupt counter for tipping bucket 0.011 inches per event
-volatile unsigned long WindCount = 0;                       // Interupt counter for wind speed s 1.492 mph per event
+unsigned long RainCount = 0;                                // Interupt counter for tipping bucket 0.011 inches per event
+unsigned long WindCount = 0;                                // Interupt counter for wind speed s 1.492 mph per event
 int GPSflag = 0;                                            // collect GPS data
 int debugFlag = 0;                                          // Output debug inforamtion to syslog daemon file
 int humidityFlag = 0;
@@ -101,11 +106,10 @@ struct gps_data_t gpsdata;
 float dht_tempature;
 float dht_humidity;
 float seaLevelPressure = 1000.0;
-static uint8_t dht22_dat[5] = {0,0,0,0,0};
+uint8_t dht22_dat[5] = {0,0,0,0,0};
 float WindDir[100];                                         // Array use to average wind direction for on period
 
-struct statsRecord                                          // Structure use to write statistics record
-{
+struct statsRecord {                                        // Structure use to write statistics record
     time_t eventTime;
     float tempHigh;
     float tempLow;
@@ -150,7 +154,7 @@ int main(int argc, char **argv)
     parse_opts(argc,argv);                                  // check for command line arguments
 
     //
-    // Initilise hardware and program settings
+    // Initilize hardware and program settings
     //
     if (wiringPiSetup () < 0) {                             // Setup all Raspberry Pi Pins
         fprintf (stderr, "Unable to setup wiringPi.\n");
@@ -250,12 +254,6 @@ int main(int argc, char **argv)
                     CurrentHumidity = dht_humidity;         // Read Humidity
                 }
             }
-            
-            CurrentTemperature = pressure(1);               // Read Temperature
-
-            if ( CurrentTemperature > stats.tempHigh )      // Capture Daily High Temp
-                stats.tempHigh = CurrentTemperature;
-            if ( CurrentTemperature < stats.tempLow )       // Capture Daily Low Temp
                 stats.tempLow = CurrentTemperature;
 
             //
@@ -307,8 +305,14 @@ int main(int argc, char **argv)
                 localTime->tm_hour, localTime->tm_min, localTime->tm_sec);
 
             //
-            // Output for the WeeWx weather station software
+            // Air Quality
             //
+            for (ADLoop=0; ADLoop<8; ADLoop++) {        // Read all the AD values
+                ADAccumulation[ADLoop] = read_adc_dev(ADLoop);
+            }
+/*
+ * Output for the WeeWx weather station software - See below
+*/
             if ( WeeFlag ) {                                // Write data for the WeeWx web service
 
                 fileHandle = fopen(WeeFile,"w");
@@ -321,15 +325,21 @@ int main(int argc, char **argv)
                     sprintf(printBuffer,"dateTime %lu\noutTemp %4.2f\nbarometer %4.2f\nwindSpeed %4.2f\n",
                        time(NULL), (9.0/5.0)*CurrentTemperature+32.0, CurrentPressure / 33.86, WindAccumulation );
                     fwrite(printBuffer, strlen(printBuffer),1,fileHandle);
-                    sprintf(printBuffer,"windDir %4.2f\noutHumidity %4.2f\nrain %4.2f\n",
-                       WindDirection, CurrentHumidity, RainAccumulation);
+                    sprintf(printBuffer,"windDir %4.2f\noutHumidity %4.2f\nrain %4.2f\nUV %10.2f\n",
+                       WindDirection, CurrentHumidity, RainAccumulation, (readadc(TGS2600)*1.0)/64);
+                    fwrite(printBuffer, strlen(printBuffer),1,fileHandle);
+                    sprintf(printBuffer,"dateTime %lu\noutTemp %4.2f\nbarometer %4.2f\nwindSpeed %4.2f\n",
+                       time(NULL), (9.0/5.0)*CurrentTemperature+32.0, CurrentPressure / 33.86, WindAccumulation );
+                    fwrite(printBuffer, strlen(printBuffer),1,fileHandle);
+                    sprintf(printBuffer,"windDir %4.2f\noutHumidity %4.2f\nrain %4.2f\nUV %10.2f\n",
+                       WindDirection, CurrentHumidity, RainAccumulation, (readadc(TGS2600)*1.0)/64);
                     fwrite(printBuffer, strlen(printBuffer),1,fileHandle);
                     fclose(fileHandle);
                 }
             }
 
 //
-// This DData is read only once per reporting period
+// This Data is read only once per reporting period
 //
             if ( ReportLoop+1 == ReportPeriod ) {           // Report Opbservations
                 //
@@ -367,12 +377,6 @@ int main(int argc, char **argv)
                     }
                 }
 
-                //
-                // Air Quality
-                //
-                for (ADLoop=0; ADLoop<8; ADLoop++) {        // Read all the AD values
-                    ADAccumulation[ADLoop] = read_adc_dev(ADLoop);
-                }
                 digitalWrite (LED_PIN, LOW) ;               // LED Off
 
                 // Opbservation Collection is DONE
@@ -394,12 +398,6 @@ int main(int argc, char **argv)
                     syslog(LOG_NOTICE, printBuffer);
                     sprintf(printBuffer, "DEBUG: Daily High Temperature = %6.2f", stats.tempHigh);
                     syslog(LOG_NOTICE, printBuffer);
-                    sprintf(printBuffer, "DEBUG: Daily Low Temperature = %6.2f", stats.tempLow);
-                    syslog(LOG_NOTICE, printBuffer);
-                    sprintf(printBuffer, "DEBUG: Current Humidity = %6.2f", CurrentHumidity);
-                    syslog(LOG_NOTICE, printBuffer);
-                    sprintf(printBuffer, "DEBUG: Current Pressure = %6.2f", CurrentPressure);
-                    syslog(LOG_NOTICE, printBuffer);
                     sprintf(printBuffer, "DEBUG: RP Precipition = %6.2f", RainAccumulation);
                     syslog(LOG_NOTICE, printBuffer);
                     sprintf(printBuffer, "DEBUG: Hourly Precipition = %6.2f", stats.hourlyPrecip);
@@ -414,12 +412,16 @@ int main(int argc, char **argv)
                     syslog(LOG_NOTICE, printBuffer);
                     sprintf(printBuffer, "DEBUG: RP High Wind Direction = %6.2f", stats.highWindDir);
                     syslog(LOG_NOTICE, printBuffer);
+                    sprintf(printBuffer, "DEBUG: LUX Level = %6.2f", ohms2lux(ADAccumulation[0]));
+                    syslog(LOG_NOTICE, printBuffer);
                     for (ADLoop=0; ADLoop<8; ADLoop++) {
                         sprintf(printBuffer, "DEBUG: AD %d = %6.2f", ADLoop, ADAccumulation[ADLoop]);
                         syslog(LOG_NOTICE, printBuffer);
                     }
                 }
-
+/*
+ * Output for the WeeWx weather station software
+*/
                 if ( WeeFlag ) {                                // Write data for the WeeWx web service
 
                     fileHandle = fopen(WeeFile,"w");
@@ -432,8 +434,8 @@ int main(int argc, char **argv)
                         sprintf(printBuffer,"dateTime %lu\noutTemp %4.2f\nbarometer %4.2f\nwindSpeed %4.2f\n",
                             time(NULL), (9.0/5.0)*CurrentTemperature+32.0, CurrentPressure / 33.86, WindAccumulation);
                         fwrite(printBuffer, strlen(printBuffer),1,fileHandle);
-                        sprintf(printBuffer,"windDir %4.2f\noutHumidity %4.2f\nrain %4.2f\naltitude %4.2f\n",
-                            WindDirection, CurrentHumidity, RainAccumulation, CurrentAltitude);
+                        sprintf(printBuffer,"windDir %4.2f\noutHumidity %4.2f\nrain %4.2f\naltitude %4.2f\nUV %10.2f\n",
+                            WindDirection, CurrentHumidity, RainAccumulation, CurrentAltitude, (readadc(TGS2600)*1.0)/64);
                         fwrite(printBuffer, strlen(printBuffer),1,fileHandle);
                         fclose(fileHandle);
                     }
@@ -453,6 +455,9 @@ int main(int argc, char **argv)
                         syslog (LOG_NOTICE, "ERROR: Failed to open output file.\n");
                         exit(EXIT_FAILURE);
                     } else {
+/*
+ * CSV output
+*/
                         sprintf(printBuffer,"%s,%4.4f,%4.4f,%6.4f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f",
                             CurrentTime,CurrentLatitude,CurrentLongitude,CurrentAltitude,
                             CurrentTemperature,CurrentHumidity,CurrentPressure,WindAccumulation,WindDirection);
@@ -460,7 +465,7 @@ int main(int argc, char **argv)
 
                         sprintf(printBuffer,",%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f\n",
                             stats.tempHigh,stats.tempLow,stats.highWind,stats.highWindDir,
-                            ADAccumulation[0],ADAccumulation[1],ADAccumulation[2],ADAccumulation[3],
+                            ohms2lux(ADAccumulation[0]),ADAccumulation[1],ADAccumulation[2],ADAccumulation[3],
                             ADAccumulation[4],ADAccumulation[5],ADAccumulation[6],ADAccumulation[7]);
                         fwrite(printBuffer, strlen(printBuffer),1,fileHandle);
 
@@ -569,12 +574,6 @@ float read_adc_dev(int pin)
     }
     dev[8] = {
         { 0, 3.3,  10000.0, "LDR light sensor" },
-        { 0, 3.3,  22000.0, "TGS2600         " },
-        { 0, 3.3,  10000.0, "MiSC-2710       " },
-        { 0, 3.3, 100000.0, "MiCS=5525       " },
-        { 0, 3.3,  01000.0, "Sound           " },
-        { 0, 3.3,  10000.0, "Wind Direction  " },
-        { 0, 3.3,  10000.0, "Open            " },
         { 0, 3.3,    990.0, "Test Voltage    " }
     } ;
 
@@ -633,15 +632,13 @@ long readadc(int adcnum)
 
     wiringPiSPIDataRW(0, buff, 3);
 
-    //      adc = ((buff[1] & 3) << 8) + buff[2];
-                                                            // 10 bits of data
     adc = ((buff[1] * 256 ) + buff[2]) & 0b1111111111 ;
 
     return adc;
 }
 
 
-static uint8_t sizecvt(const int read)
+uint8_t sizecvt(const int read)
 {
     /* digitalRead() and friends from wiringpi are defined as returning a value
     < 256. However, they are returned as int() types. This is a safety function */
@@ -662,7 +659,7 @@ int read_dht22_dat()
     int tries = 1;
     char printBuffer[80];                                   // Array buffers
 
-    while ( tries < 9 ) {
+    while ( tries < 9 ) {                                   // try to read the device 8 times
         j = 0;
         dht22_dat[0] = dht22_dat[1] = dht22_dat[2] = dht22_dat[3] = dht22_dat[4] = 0;
 
@@ -688,8 +685,8 @@ int read_dht22_dat()
 
             if ((i >= 4) && (i%2 == 0)) {                  // ignore first 3 transitions
                 dht22_dat[j/8] <<= 1;                      // move over the last bit set
-                if (counter > 27)
-                    dht22_dat[j/8] |= 1;		   // if it took 28us to see transition set bit high
+                if (counter > 27)                          // if it took < 28us to see the transitition
+                    dht22_dat[j/8] |= 1;		   // set the bit high
                 j++;
             }
         }
@@ -869,7 +866,7 @@ void print_usage(const char *prog)
 //
 // Terminate and stay resident
 //
-static void become_daemon(void)
+void become_daemon(void)
 {
     pid_t pid;
 
@@ -891,10 +888,6 @@ static void become_daemon(void)
     signal(SIGCHLD, SIG_IGN);                               // Catch, ignore and handle signals
 
     pid = fork();                                           // Fork off for the second time
-
-    if (pid < 0)                                            // An error occurred
-        exit(EXIT_FAILURE);
-
     if (pid > 0)                                            // Success: Let the parent terminate
         exit(EXIT_SUCCESS);
 
@@ -929,6 +922,10 @@ void signal_handler(int sig)
     }
 }
 
+float ohms2lux(float ohms)
+{
+    return( 5e9 * pow(log10(ohms), -12.78) * sqrt(0.99) );
+}
 
 //
 // Interrupt  called every time an event occurs
