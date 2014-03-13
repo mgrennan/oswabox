@@ -11,10 +11,10 @@ void nmea_parse_gpgga(char *nmea, gpgga_t *loc)
     char *p = nmea;
     char s[3];
 
-// SAMPLE: $GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47
-//    printf("%s\n",p);
+    // SAMPLE: $GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47
+    //    printf("%s\n",p);
 
-    p = strchr(p, ',')+1; 	// Read hour, minute, second UTC
+    p = strchr(p, ',')+1;                                   // Read hour, minute, second UTC
     s[0] = p[0];
     s[1] = p[1];
     s[2] = 0;
@@ -72,15 +72,16 @@ void nmea_parse_gpgga(char *nmea, gpgga_t *loc)
     loc->altitude = atof(p);
 }
 
+
 void nmea_parse_gprmc(char *nmea, gprmc_t *loc)
 {
     char *p = nmea;
     char s[3];
 
-// SAMPLE: $GPRMC,123519,A,4807.038,N,01131.000,E,022.4,084.4,230394,003.1,W*6A
-//    printf("%s\n",p);
+    // SAMPLE: $GPRMC,123519,A,4807.038,N,01131.000,E,022.4,084.4,230394,003.1,W*6A
+    //    printf("%s\n",p);
 
-    p = strchr(p, ',')+1; 	// Read hour, minute, second UTC
+    p = strchr(p, ',')+1;                                   // Read hour, minute, second UTC
     s[0] = p[0];
     s[1] = p[1];
     s[2] = 0;
@@ -94,9 +95,9 @@ void nmea_parse_gprmc(char *nmea, gprmc_t *loc)
     s[2] = 0;
     loc->second = atoi(s);
 
-    p = strchr(p, ',')+1;	// skip status
+    p = strchr(p, ',')+1;                                   // skip status
 
-    p = strchr(p, ',')+1;	// read latitude
+    p = strchr(p, ',')+1;                                   // read latitude
     loc->latitude = atof(p);
 
     p = strchr(p, ',')+1;
@@ -112,7 +113,7 @@ void nmea_parse_gprmc(char *nmea, gprmc_t *loc)
             break;
     }
 
-    p = strchr(p, ',')+1;	// read longitude
+    p = strchr(p, ',')+1;                                   // read longitude
     loc->longitude = atof(p);
 
     p = strchr(p, ',')+1;
@@ -128,13 +129,13 @@ void nmea_parse_gprmc(char *nmea, gprmc_t *loc)
             break;
     }
 
-    p = strchr(p, ',')+1;	// read ground speed in knots
+    p = strchr(p, ',')+1;                                   // read ground speed in knots
     loc->speed = atof(p);
 
-    p = strchr(p, ',')+1;	// read course in degrees true
+    p = strchr(p, ',')+1;                                   // read course in degrees true
     loc->course = atof(p);
 
-    p = strchr(p, ',')+1;	// read date
+    p = strchr(p, ',')+1;                                   // read date
     s[0] = p[0];
     s[1] = p[1];
     s[2] = 0;
@@ -148,6 +149,7 @@ void nmea_parse_gprmc(char *nmea, gprmc_t *loc)
     s[2] = 0;
     loc->year = atoi(s);
 }
+
 
 /**
  * Get the message type (GPGGA, GPRMC, etc..)
@@ -175,7 +177,9 @@ uint8_t nmea_get_message_type(const char *message)
     return NMEA_UNKNOWN;
 }
 
-uint8_t nmea_valid_checksum(const char *message) {
+
+uint8_t nmea_valid_checksum(const char *message)
+{
     uint8_t checksum= (uint8_t)strtol(strchr(message, '*')+1, NULL, 16);
 
     char p;
@@ -191,4 +195,3 @@ uint8_t nmea_valid_checksum(const char *message) {
 
     return _EMPTY;
 }
-

@@ -3,8 +3,10 @@ Coding ideas.
 
 Each device should have an example program to diminstrate how it is accessed.
 
-The program should be named after the functions they preform or the fuction and
-device name, IE 'pressure' for the air pressue device or 'pressure-rhm085'.  
+Because there are many defices for the same function, tempature for example,
+the program should be named after the devide not the function. This is very
+true of devices that do more then one function.
+
 Note the device may have other functions as well, IE temp to regulate the 
 pressure reading that may also be readable. In that case command line options 
 can/should be allowed to print these results as well.  

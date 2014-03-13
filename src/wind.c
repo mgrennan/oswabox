@@ -30,27 +30,23 @@ void myInterrupt(void);
 // the event counter
 volatile int eventCounter = 0;
 
-
 int main(void)
 {
     // sets up the wiringPi library
-    if (wiringPiSetup () < 0)
-    {
+    if (wiringPiSetup () < 0) {
         fprintf (stderr, "Unable to setup wiringPi: %s\n", strerror (errno));
         return 1;
     }
 
     // set Pin 17/0 generate an interrupt on high-to-low transitions
     // and attach myInterrupt() to the interrupt
-    if ( wiringPiISR (WIND_PIN, INT_EDGE_FALLING, &myInterrupt) < 0 )
-    {
+    if ( wiringPiISR (WIND_PIN, INT_EDGE_FALLING, &myInterrupt) < 0 ) {
         fprintf (stderr, "Unable to setup ISR: %s\n", strerror (errno));
         return 1;
     }
 
     // display counter value every second.
-    while ( 1 )
-    {
+    while ( 1 ) {
         /* Wind is 1.492 mph per event */
         printf("     Wind Speed: % 4.2f\n", eventCounter * 1.492 );
         printf(" Wind Direction: % 4.2f\n", get_wind_direction() );
@@ -61,37 +57,39 @@ int main(void)
     return 0;
 }
 
+
 //
 // read the wind direction sensor, return heading in degrees
 //
-float get_wind_direction() 
+float get_wind_direction()
 {
-  unsigned int adc;
+    unsigned int adc;
 
-  adc = readadc(WIND_DIR_PIN); 			// get the current reading from the sensor
+    adc = readadc(WIND_DIR_PIN);                            // get the current reading from the sensor
 
-  // The following table is ADC readings for the wind direction sensor output, sorted from low to high.
-  // Each threshold is the midpoint between adjacent headings. The output is degrees for that ADC reading.
-  // Note that these are not in compass degree order!  See Weather Meters datasheet for more information.
+    // The following table is ADC readings for the wind direction sensor output, sorted from low to high.
+    // Each threshold is the midpoint between adjacent headings. The output is degrees for that ADC reading.
+    // Note that these are not in compass degree order!  See Weather Meters datasheet for more information.
 
-  if (adc < 380) return (112.5);
-  if (adc < 393) return (67.5);
-  if (adc < 414) return (90);
-  if (adc < 456) return (157.5);
-  if (adc < 508) return (135);
-  if (adc < 551) return (202.5);
-  if (adc < 615) return (180);
-  if (adc < 680) return (22.5);
-  if (adc < 746) return (45);
-  if (adc < 801) return (247.5);
-  if (adc < 833) return (225);
-  if (adc < 878) return (337.5);
-  if (adc < 913) return (0);
-  if (adc < 940) return (292.5);
-  if (adc < 967) return (315);
-  if (adc < 990) return (270);
-  return (-1); // error, disconnected?
+    if (adc < 380) return (112.5);
+    if (adc < 393) return (67.5);
+    if (adc < 414) return (90);
+    if (adc < 456) return (157.5);
+    if (adc < 508) return (135);
+    if (adc < 551) return (202.5);
+    if (adc < 615) return (180);
+    if (adc < 680) return (22.5);
+    if (adc < 746) return (45);
+    if (adc < 801) return (247.5);
+    if (adc < 833) return (225);
+    if (adc < 878) return (337.5);
+    if (adc < 913) return (0);
+    if (adc < 940) return (292.5);
+    if (adc < 967) return (315);
+    if (adc < 990) return (270);
+    return (-1);                                            // error, disconnected?
 }
+
 
 /* This table is for 3.3V through a 10k resistor.
 
@@ -145,11 +143,10 @@ long readadc(adcnum)
     return adc;
 }
 
+
 // -------------------------------------------------------------------------
 // myInterrupt:  called every time an event occurs
 void myInterrupt(void)
 {
     eventCounter++;
 }
-
-

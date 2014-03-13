@@ -64,7 +64,7 @@ float temp(int);
 #define rain_avg 1
 #define samples 50                                          // Number of AD samples to take
 #define wait 10                                             // Time delay between ADC reads
-#define MAXTIMINGS 85
+#define MAXTIMINGS 100
 
 //
 // Program variables
@@ -96,17 +96,14 @@ int main (int argc, char **argv)
     //
     // Make sure all the GPI pins are set correctly
     //
-    if (wiringPiSetup () < 0)
-    {
+    if (wiringPiSetup () < 0) {
         fprintf (stderr, "Unable to setup wiringPi.\n");
         return 1;
     }
     pinMode (LED, OUTPUT) ;
 
-    if ( GPSflag )
-    {
-        if ( gpstype[0] == 's' )
-        {
+    if ( GPSflag ) {
+        if ( gpstype[0] == 's' ) {
             gps_init();                                     // Open serial port
         }
     }
@@ -115,8 +112,7 @@ int main (int argc, char **argv)
     // Setup Interups for the Wind and Rain Devices
     //
     // set Pin 17/0 generate an interrupt on high-to-low transitions
-    if ( wiringPiISR (WIND_PIN, INT_EDGE_FALLING, &WindInterrupt) < 0 )
-    {
+    if ( wiringPiISR (WIND_PIN, INT_EDGE_FALLING, &WindInterrupt) < 0 ) {
         fprintf (stderr, "Unable to setup wind interrupts\n");
         return 1;
     }
@@ -126,25 +122,21 @@ int main (int argc, char **argv)
     //
     digitalWrite (LED, HIGH) ;                              // Turn LED On
 
-    if ( GPSflag )
-    {
+    if ( GPSflag ) {
         gps_location(&data);                                // Read and parse the GPS info
     }
-    else
-    {
+    else {
 
         // Read data time from system
     }
 
-    switch((char)output[0])
-    {
+    switch((char)output[0]) {
 
         //
         // Output the current Observation as a CSV text line.
         //
         case 'c':
-            if (GPSflag)
-            {
+            if (GPSflag) {
                 printf("%s,20%02d-%02d-%02dT",station,data.year,data.month,data.day);
                 printf("%02d:%02d:%02d,",data.hour,data.minute,data.second);
                 printf("%lf,",data.latitude);
@@ -153,8 +145,7 @@ int main (int argc, char **argv)
             }
             printf("%6.2f,%6.2f,%6.2f,%6.2f,%6.2f",
                 temp(1), temp(0), pressure(0), wind_speed(), rain_fall() );
-            for (c=0; c<8; c++)
-            {
+            for (c=0; c<8; c++) {
                 printf(",%6.4f", read_adc_dev(c));
             }
             break;
@@ -163,8 +154,7 @@ int main (int argc, char **argv)
             // Output the current observations in a human readable format.
             //
         case 'h':
-            if ( GPSflag )
-            {
+            if ( GPSflag ) {
                 printf("       Date: 20%02d-%02d-%02d\n",data.year, data.month, data.day);
                 printf("       Time: %02d:%02d:%02d\n",data.hour, data.minute, data.second);
                 printf("   Latitude: % 11.4f\n",data.latitude);
@@ -181,8 +171,7 @@ int main (int argc, char **argv)
                 wind_direction(),
                 rain_fall()
                 );
-            for (c=0; c<8; c++)
-            {
+            for (c=0; c<8; c++) {
                 printf("   Device %d: % 11.4f ohms\n",c , read_adc_dev(c));
             };
             break;
@@ -211,8 +200,7 @@ int main (int argc, char **argv)
             printf(",%6.4f", wind_direction());
             // Rain Fall
             printf(",%6.4f", rain_fall());
-            for (c=0; c<8; c++)
-            {
+            for (c=0; c<8; c++) {
                 printf(",%6.4f", read_adc_dev(c));
             }
 
@@ -249,10 +237,8 @@ void print_usage(const char *prog)
 
 void parse_opts(int argc, char *argv[])
 {
-    while (1)
-    {
-        static const struct option lopts[] =
-        {
+    while (1) {
+        static const struct option lopts[] = {
             { "GPS",required_argument, NULL, 'g' },
             { "help", no_argument, NULL, 'h' },
             { "ouput", required_argument, NULL, 'o' },
@@ -268,8 +254,7 @@ void parse_opts(int argc, char *argv[])
         if (c == -1)
             break;
 
-        switch (c)
-        {
+        switch (c) {
             case 'g':
                 GPSflag = 1;
                 strcpy(gpstype, optarg);
@@ -385,20 +370,17 @@ float pressure(int temp)
     sensor->oss = 3;
 
     fileDescriptor = open(device, O_RDWR);
-    if (fileDescriptor<0)
-    {
+    if (fileDescriptor<0) {
         printf("Failed to open i2c device!\n");
         exit(1);
     }
 
-    if (ioctl(fileDescriptor, I2C_SLAVE, sensor->i2cAddress)<0)
-    {
+    if (ioctl(fileDescriptor, I2C_SLAVE, sensor->i2cAddress)<0) {
         printf("Failed to select i2c device!\n");
         exit(1);
     }
 
-    if ( ! readCalibrationTable(fileDescriptor,sensor))
-    {
+    if ( ! readCalibrationTable(fileDescriptor,sensor)) {
         printf("Failed to read calibration table!\n");
         exit(1);
     }
@@ -471,8 +453,7 @@ float read_adc_dev(int pin)
         float resistance ;                                  // resistence in ohms
         char *name ;                                        // device name
     }
-    dev[8] =
-    {
+    dev[8] = {
         { 0, 3.3,  10000.0, "LDR light sensor" },
         { 0, 3.3,  22000.0, "TGS2600         " },
         { 0, 3.3,  10000.0, "MiSC-2710       " },
@@ -489,8 +470,7 @@ float read_adc_dev(int pin)
 
     ob = 0;
     tot = 0;
-    for (i=0; i<samples; i++)                               // Read samples
-    {
+    for (i=0; i<samples; i++) {                             // Read samples
         ob =  readadc(pin);
         tot = tot + (ob * 1.0) ;
         delay( wait ) ;
@@ -503,12 +483,10 @@ float read_adc_dev(int pin)
     volt = (dev[pin].refvolt / 1023.0) * avg ;
     // reference voltage / 10bit AD (1023) * reading
 
-    if ( dev[pin].pullup )                                  // If this is a pullup resister
-    {
+    if ( dev[pin].pullup ) {                                // If this is a pullup resister
         value = (( dev[pin].resistance * dev[pin].refvolt ) / volt ) - dev[pin].resistance ;
     }
-    else                                                    // this is a pulldown resister
-    {
+    else {                                                  // this is a pulldown resister
         value = dev[pin].resistance / (( dev[pin].refvolt / volt ) - 1 ) ;
     }
 
@@ -525,8 +503,7 @@ static uint8_t sizecvt(const int read)
     /* digitalRead() and friends from wiringpi are defined as returning a value
     < 256. However, they are returned as int() types. This is a safety function */
 
-    if (read > 255 || read < 0)
-    {
+    if (read > 255 || read < 0) {
         printf("Invalid data from wiringPi library\n");
         exit(EXIT_FAILURE);
     }
@@ -544,34 +521,30 @@ float temp(int temp)
     uint8_t j = 0, i;
     int gooddata = 0;
 
-    while ( ! gooddata )
-    {
+    while ( ! gooddata ) {
         dht22_dat[0] = dht22_dat[1] = dht22_dat[2] = dht22_dat[3] = dht22_dat[4] = 0;
 
         // pull pin down for 18 milliseconds
         pinMode(DHT_PIN, OUTPUT);
         digitalWrite(DHT_PIN, HIGH);
-        delay(10);
+        delay(40);
         digitalWrite(DHT_PIN, LOW);
         delay(18);
 
         // then pull it up for 40 microseconds
         digitalWrite(DHT_PIN, HIGH);
-        delayMicroseconds(40);
+        delayMicroseconds(38);
 
         // prepare to read the pin
         pinMode(DHT_PIN, INPUT);
 
         // detect change and read data
-        for ( i=0; i< MAXTIMINGS; i++)
-        {
+        for ( i=0; i< MAXTIMINGS; i++) {
             counter = 0;
-            while (sizecvt(digitalRead(DHT_PIN)) == laststate)
-            {
+            while (sizecvt(digitalRead(DHT_PIN)) == laststate) {
                 counter++;
                 delayMicroseconds(1);
-                if (counter == 255)
-                {
+                if (counter == 255) {
                     break;
                 }
             }
@@ -580,8 +553,7 @@ float temp(int temp)
             if (counter == 255) break;
 
             // ignore first 3 transitions
-            if ((i >= 4) && (i%2 == 0))
-            {
+            if ((i >= 4) && (i%2 == 0)) {
                 // shove each bit into the storage bytes
                 dht22_dat[j/8] <<= 1;
                 if (counter > 16)

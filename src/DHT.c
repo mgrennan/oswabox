@@ -10,8 +10,6 @@
 //
 */
 
-#define DEBUG
-
 #include <maxdetect.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,15 +21,17 @@
 #include <sys/time.h>
 
 #include <wiringPi.h>
+#include "wiringPiSPI.h"
 
 void print_usage(const char *);
 void parse_opts(int argc, char *argv[]);
-int read_RHT (int, float *, float *);
+int read_rht (float *, float *);
 long long current_timestamp();
 
 static int DHTPIN = 7;
 
 int count = 1;
+uint8_t dht_data [4] ;
 
 int main(int argc, char *argv[])
 {
@@ -54,19 +54,19 @@ int main(int argc, char *argv[])
         goodReading = 0;
         attempts = 10;
         while (!goodReading && (attempts-- > 0)) {
-            if ( read_RHT (DHTPIN, &myTemp, &myRelHumidity))
+            if ( read_rht (&myTemp, &myRelHumidity))
                 goodReading = 1;                            // stop now that it worked
+            sleep(1);
         }
 
         T = myTemp / 10.0 ;
         H = myRelHumidity / 10.0 ;
         printf("Temperature: % 11.4f C\t= % 5.2f F\n", T, (T * 1.8) + 32) ;
         printf("   Humidity: % 11.4f %%\n", H);
-        if ( count > 1 )
-            sleep(2);
     }
+    if ( count > 1 )
+        sleep(5);
 
-    return 0;
 }
 
 
@@ -118,52 +118,93 @@ void parse_opts(int argc, char *argv[])
 
 
 /*
- * read_RHT:
+ * read_rht:
  *      Read the Temperature & Humidity from an RHT03 sensor
  *********************************************************************************
  */
 
-int read_RHT (const int pin, float *temp, float *rh)
+int read_rht (float *temp, float *rh)
 {
-    static long long nextTime   = 0 ;
-    long long now ;
+    static unsigned long now ;
+    unsigned long nextTime   = 0 ;
     static int lastTemp   = 0 ;
     static int lastRh     = 0 ;
-    static int lastResult = 0 ;
+    static int newResult = 0 ;
 
-    unsigned char buffer [4] ;
-
-    now = current_timestamp();
+    now = time(NULL);
     if ( now < nextTime) {                                  // if < second sience last call
+        printf("Returning old results\n");
         *temp = lastTemp ;                                  // return last reading
         *rh   = lastRh ;
         return 1 ;
     }
 
-    #ifdef DEBUG
-    printf("Reading NEW data\n");
-    #endif
-    lastResult = maxDetectRead (pin, buffer) ;
+    printf("Reading dht\n");
+    newResult = read_dht_data() ;
 
-    if (lastResult) {
-        *rh        = lastRh     =  (buffer [0] * 256 + buffer [1]) ;
-        *temp      = lastTemp   =  (buffer [2] * 256 + buffer [3]) ;
-        // next call no sooner then now + 1 second
-        nextTime   = current_timestamp() + 2000 ;
+    if (newResult) {
+        printf("Returning new results\n");
+        *rh        = lastRh     =  (dht_data [0] * 256 + dht_data [1]) ;
+        *temp      = lastTemp   =  (dht_data [2] * 256 + dht_data [3]) ;
+        nextTime   = time(NULL) + 2;                        // next call no sooner then now + 2 second
         return 1 ;
-    }
-    else {
-        return 0 ;
-    }
+    } else
+    return 0 ;
 }
 
 
-long long current_timestamp()
+int read_dht_data(void)
 {
-    struct timeval te;
-    gettimeofday(&te, NULL);                                // get current time
-    // caculate milliseconds
-    long long milliseconds = te.tv_sec*1000LL + te.tv_usec/1000;
-    // printf("milliseconds: %lld\n", milliseconds);
-    return milliseconds;
+    uint8_t laststate = HIGH;
+    uint8_t counter = 0;
+    uint8_t j = 0, i;
+    unsigned long currenttime;
+
+    pinMode(DHTPIN, OUTPUT);                                // pull the pin high and wait 250 milliseconds
+    digitalWrite(DHTPIN, HIGH);
+    delay(250);
+
+    dht_data[0] = dht_data[1] = dht_data[2] = dht_data[3] = dht_data[4] = 0;
+
+    digitalWrite(DHTPIN, LOW);                              // now pull it low for ~20 milliseconds
+    delay(20);
+    digitalWrite(DHTPIN, HIGH);
+    delay(20);
+    pinMode(DHTPIN, INPUT);
+
+    for ( i=0; i< 1000 ; i++) {                             // read in timings
+        counter = 0;
+        while (digitalRead(DHTPIN) == laststate) {
+            counter++;
+            delay(1);
+            if (counter == 255) {
+                printf("Never got a state chage!\n");
+                break;
+            }
+        }
+        if (counter == 255) break;
+
+        laststate = digitalRead(DHTPIN);
+        printf("%d",laststate);
+
+        if ((i >= 4) && (i%2 == 0)) {                       // ignore first 3 transitions
+            dht_data[j/8] <<= 1;                            // shove each bit into the storage bytes
+            if (counter > 16)
+                dht_data[j/8] |= 1;
+            j++;
+        }
+
+    }
+
+    printf("\ndht_data = %d:%d:%d:%d:%d\n", dht_data[0], dht_data[1], dht_data[2], dht_data[3], dht_data[4]);
+    pinMode(DHTPIN, OUTPUT);
+    digitalWrite(DHTPIN, LOW);
+    // check we read 40 bits and that the checksum matches
+    if ((j >= 40) &&
+    (dht_data[4] == ((dht_data[0] + dht_data[1] + dht_data[2] + dht_data[3]) & 0xFF)) ) {
+        return 1;
+    }
+
+    return 0;
+
 }

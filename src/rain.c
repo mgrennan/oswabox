@@ -1,5 +1,5 @@
 /*
-// rainfall.c 
+// rainfall.c
 // Mark Grennan - 2014-01-02
 //
 // based on isr.c from the WiringPi library, authored by Gordon Henderson
@@ -32,7 +32,7 @@ volatile long eventCount = 0;
 // myInterrupt:  called every time an event occurs
 void myInterrupt(void)
 {
-	eventCount++;
+    eventCount++;
 }
 
 
@@ -40,32 +40,29 @@ void myInterrupt(void)
 // main
 int main(void)
 {
-	long count ;				// Count the minutes run
-	
-	if (wiringPiSetup () < 0) 		// sets up the wiringPi library
-	{
-		fprintf (stderr, "Unable to setup wiringPi: %s\n", strerror (errno));
-		return 1;
-	}
+    long count ;                                            // Count the minutes run
 
-	// set Pin 17/0 generate an interrupt on high-to-low transitions
-	// and attach myInterrupt() to the interrupt
-	if ( wiringPiISR (RAIN_PIN, INT_EDGE_FALLING, &myInterrupt) < 0 )
-	{
-		fprintf (stderr, "Unable to setup ISR: %s\n", strerror (errno));
-		return 1;
-	}
+    if (wiringPiSetup () < 0) {                             // sets up the wiringPi library
+        fprintf (stderr, "Unable to setup wiringPi: %s\n", strerror (errno));
+        return 1;
+    }
 
-	count = 0;
-	
-	while ( 1 )				// display counter value every second.
-	{
-						// event rate is 0.011 inches per event 
-		printf("Minuts: %04ld %lf Avg: %lf ipm\n", count, eventCount * 0.011, (eventCount * 0.011) / count);
-		eventCount = 0;
-		delay( 60000 );			 // wait 60 second
+    // set Pin 17/0 generate an interrupt on high-to-low transitions
+    // and attach myInterrupt() to the interrupt
+    if ( wiringPiISR (RAIN_PIN, INT_EDGE_FALLING, &myInterrupt) < 0 ) {
+        fprintf (stderr, "Unable to setup ISR: %s\n", strerror (errno));
+        return 1;
+    }
 
-	}
+    count = 0;
 
-	return 0;
+    while ( 1 ) {                                           // display counter value every second.
+        // event rate is 0.011 inches per event
+        printf("Minuts: %04ld %lf Avg: %lf ipm\n", count, eventCount * 0.011, (eventCount * 0.011) / count);
+        eventCount = 0;
+        delay( 60000 );                                     // wait 60 second
+
+    }
+
+    return 0;
 }

@@ -71,7 +71,7 @@ float ohms2lux(float);
 #define DHT_PIN  7                                          // The wiringPi pin for the RHT03
 #define WIND_PIN 0                                          // The wiringPi pin for the wind speed
 #define RAIN_PIN 1                                          // The wiringPi pin for the rain guage
-#define TGS2600 0					    // ADA pins
+#define TGS2600 0                                           // ADA pins
 #define MiSC2710 1
 #define MiSC5525 2
 #define Sound 3
@@ -100,7 +100,7 @@ int BMP085_mode = 2;                                        // 0=LOW POWER 1=STA
 int ADSamples = 10;                                         // number of read samples to average on the AD converter
 int NPFlag = 0;                                             // write obs to named pipe
 int CSVFlag = 0;                                            // write obs to file
-int WeeFlag = 0;                                            // write obs to file read by WeeWx 
+int WeeFlag = 0;                                            // write obs to file read by WeeWx
 int pressureSet = 0;
 struct gps_data_t gpsdata;
 float dht_tempature;
@@ -109,7 +109,8 @@ float seaLevelPressure = 1000.0;
 uint8_t dht22_dat[5] = {0,0,0,0,0};
 float WindDir[100];                                         // Array use to average wind direction for on period
 
-struct statsRecord {                                        // Structure use to write statistics record
+struct statsRecord                                          // Structure use to write statistics record
+{
     time_t eventTime;
     float tempHigh;
     float tempLow;
@@ -130,7 +131,7 @@ int main(int argc, char **argv)
     FILE *fileHandle;                                       // Filesystem handle for open files
     char printBuffer[80];                                   // Array buffers
     int ReportLoop,ADLoop,DONE;
-    float pressureAdjust = 0.0;                             // Difference between reading and standard 
+    float pressureAdjust = 0.0;                             // Difference between reading and standard
 
     char CurrentTime[25]  = "";                             // The current time UTC
 
@@ -170,7 +171,7 @@ int main(int argc, char **argv)
         fprintf (stderr, "Unable to setup ISR: %s\n", strerror (errno));
         exit(EXIT_FAILURE);
     }
-    CurrentTemperature = -9999.0;                            // Set imposible numbers to start
+    CurrentTemperature = -9999.0;                           // Set imposible numbers to start
     CurrentHumidity = -9999.0;
     CurrentPressure = -9999.0;
     stats.tempHigh = -9999.0;
@@ -217,18 +218,19 @@ int main(int argc, char **argv)
         stats.highWind = -1.0;
         stats.highWindDir = -1.0;
         stats.hourlyPrecip = -1.0;
-    } else {
+    }
+    else {
         pressureSet = 1;                                    // reset the pressure offset based on the last reading
     }
     if ( time(NULL) >= stats.eventTime + 90000 ) {          // Reset stats if older than one day
         stats.dailyPrecip = -1.0;
     }
 
-//
-// Main / Outer Loop
-//
-// Make reading every CollectionPeriod - Average these reading over the ReportPeriod
-//
+    //
+    // Main / Outer Loop
+    //
+    // Make reading every CollectionPeriod - Average these reading over the ReportPeriod
+    //
     while (KeepAlive) {
         for (ReportLoop=0; ReportLoop<ReportPeriod; ReportLoop++) {
             if ( ! KeepAlive )                              // Check if we should bugger off
@@ -243,9 +245,10 @@ int main(int argc, char **argv)
             //
             // Temperature & Humidity
             //
-            if(humidityFlag) {				    // if -H set read temp from pressure censor
+            if(humidityFlag) {                              // if -H set read temp from pressure censor
                 CurrentTemperature = pressure(1);           // Read Temperature
-            } else {
+            }
+            else {
                 if (debugFlag > 2) {
                     syslog (LOG_NOTICE, "DEBUG: Reading DHT");
                 }
@@ -254,7 +257,7 @@ int main(int argc, char **argv)
                     CurrentHumidity = dht_humidity;         // Read Humidity
                 }
             }
-                stats.tempLow = CurrentTemperature;
+            stats.tempLow = CurrentTemperature;
 
             //
             // Air Pressure
@@ -263,8 +266,10 @@ int main(int argc, char **argv)
                 CurrentPressure = seaLevelPressure;
                 pressureAdjust = pressure(0) - seaLevelPressure;
                 pressureSet = 0;
-            } else {                                        // read air and adjust it
-                CurrentPressure = pressure(0) - pressureAdjust ;             // Read Air Pressure
+            }                                               // read air and adjust it
+            else {
+                                                            // Read Air Pressure
+                CurrentPressure = pressure(0) - pressureAdjust ;
             }
             stats.CurrentPressure = CurrentPressure;        // save the current pressure in the stats record
             //
@@ -298,7 +303,7 @@ int main(int argc, char **argv)
             //
             // Time
             //
-            currTime = time(NULL);                      // Current Time from System
+            currTime = time(NULL);                          // Current Time from System
             localTime = localtime(&currTime);
             sprintf(CurrentTime,"20%02d:%02d:%02dT%02d:%02d:%02d.00Z",
                 localTime->tm_year-100, localTime->tm_mon+1, localTime->tm_mday,
@@ -307,12 +312,12 @@ int main(int argc, char **argv)
             //
             // Air Quality
             //
-            for (ADLoop=0; ADLoop<8; ADLoop++) {        // Read all the AD values
+            for (ADLoop=0; ADLoop<8; ADLoop++) {            // Read all the AD values
                 ADAccumulation[ADLoop] = read_adc_dev(ADLoop);
             }
-/*
- * Output for the WeeWx weather station software - See below
-*/
+            /*
+             * Output for the WeeWx weather station software - See below
+             */
             if ( WeeFlag ) {                                // Write data for the WeeWx web service
 
                 fileHandle = fopen(WeeFile,"w");
@@ -320,27 +325,28 @@ int main(int argc, char **argv)
                 if (fileHandle == NULL) {
                     syslog (LOG_NOTICE, "ERROR: Failed to open output file.\n");
                     exit(EXIT_FAILURE);
-                } else {
+                }
+                else {
                     // These are keyword used by WeeWx for weather guage/station data
                     sprintf(printBuffer,"dateTime %lu\noutTemp %4.2f\nbarometer %4.2f\nwindSpeed %4.2f\n",
-                       time(NULL), (9.0/5.0)*CurrentTemperature+32.0, CurrentPressure / 33.86, WindAccumulation );
+                        time(NULL), (9.0/5.0)*CurrentTemperature+32.0, CurrentPressure / 33.86, WindAccumulation );
                     fwrite(printBuffer, strlen(printBuffer),1,fileHandle);
                     sprintf(printBuffer,"windDir %4.2f\noutHumidity %4.2f\nrain %4.2f\nUV %10.2f\n",
-                       WindDirection, CurrentHumidity, RainAccumulation, (readadc(TGS2600)*1.0)/64);
+                        WindDirection, CurrentHumidity, RainAccumulation, (readadc(TGS2600)*1.0)/64);
                     fwrite(printBuffer, strlen(printBuffer),1,fileHandle);
                     sprintf(printBuffer,"dateTime %lu\noutTemp %4.2f\nbarometer %4.2f\nwindSpeed %4.2f\n",
-                       time(NULL), (9.0/5.0)*CurrentTemperature+32.0, CurrentPressure / 33.86, WindAccumulation );
+                        time(NULL), (9.0/5.0)*CurrentTemperature+32.0, CurrentPressure / 33.86, WindAccumulation );
                     fwrite(printBuffer, strlen(printBuffer),1,fileHandle);
                     sprintf(printBuffer,"windDir %4.2f\noutHumidity %4.2f\nrain %4.2f\nUV %10.2f\n",
-                       WindDirection, CurrentHumidity, RainAccumulation, (readadc(TGS2600)*1.0)/64);
+                        WindDirection, CurrentHumidity, RainAccumulation, (readadc(TGS2600)*1.0)/64);
                     fwrite(printBuffer, strlen(printBuffer),1,fileHandle);
                     fclose(fileHandle);
                 }
             }
 
-//
-// This Data is read only once per reporting period
-//
+            //
+            // This Data is read only once per reporting period
+            //
             if ( ReportLoop+1 == ReportPeriod ) {           // Report Opbservations
                 //
                 // These readings only need to be collected once per reporting period
@@ -353,14 +359,16 @@ int main(int argc, char **argv)
                 if (GPSflag) {                              // Get GPS information
                     if (gps_open(GPShost, GPSport, &gpsdata) != 0) {
                         syslog(LOG_NOTICE, "ERROR: connecting to gpsd");
-                    } else {
+                    }
+                    else {
                         gps_stream(&gpsdata, WATCH_ENABLE, NULL);
                         DONE = 0;
                         while( ! DONE) {
                             if ( !gps_waiting(&gpsdata, 500000) ) {
                                 syslog(LOG_NOTICE,"ERROR: GPS Timmed out");
                                 DONE = 1;
-                            } else {
+                            }
+                            else {
                                 if (debugFlag > 2 )
                                     syslog(LOG_NOTICE, "Reading GPS information");
                                 gps_read(&gpsdata);
@@ -419,17 +427,18 @@ int main(int argc, char **argv)
                         syslog(LOG_NOTICE, printBuffer);
                     }
                 }
-/*
- * Output for the WeeWx weather station software
-*/
-                if ( WeeFlag ) {                                // Write data for the WeeWx web service
+                /*
+                 * Output for the WeeWx weather station software
+                 */
+                if ( WeeFlag ) {                            // Write data for the WeeWx web service
 
                     fileHandle = fopen(WeeFile,"w");
 
                     if (fileHandle == NULL) {
                         syslog (LOG_NOTICE, "ERROR: Failed to open output file.\n");
                         exit(EXIT_FAILURE);
-                    } else {
+                    }
+                    else {
                         // These are keyword used by WeeWx for weather guage/station data
                         sprintf(printBuffer,"dateTime %lu\noutTemp %4.2f\nbarometer %4.2f\nwindSpeed %4.2f\n",
                             time(NULL), (9.0/5.0)*CurrentTemperature+32.0, CurrentPressure / 33.86, WindAccumulation);
@@ -445,7 +454,7 @@ int main(int argc, char **argv)
                 // Write the observations to the named pipe or CSV file
                 //
                 if (NPFlag || CSVFlag) {
-                    if ( NPFlag ) 
+                    if ( NPFlag )
                         fileHandle = fopen(NamedPipe,"rw");
 
                     if ( CSVFlag )
@@ -454,10 +463,11 @@ int main(int argc, char **argv)
                     if (fileHandle == NULL) {
                         syslog (LOG_NOTICE, "ERROR: Failed to open output file.\n");
                         exit(EXIT_FAILURE);
-                    } else {
-/*
- * CSV output
-*/
+                    }
+                    else {
+                        /*
+                         * CSV output
+                         */
                         sprintf(printBuffer,"%s,%4.4f,%4.4f,%6.4f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f",
                             CurrentTime,CurrentLatitude,CurrentLongitude,CurrentAltitude,
                             CurrentTemperature,CurrentHumidity,CurrentPressure,WindAccumulation,WindDirection);
@@ -664,15 +674,15 @@ int read_dht22_dat()
         dht22_dat[0] = dht22_dat[1] = dht22_dat[2] = dht22_dat[3] = dht22_dat[4] = 0;
 
         pinMode(DHT_PIN, OUTPUT);
-        digitalWrite(DHT_PIN, HIGH);                            // start pin high for some time
+        digitalWrite(DHT_PIN, HIGH);                        // start pin high for some time
         delayMicroseconds(40);
-        digitalWrite(DHT_PIN, LOW);                             // pull pin down for 18 miliseconds
+        digitalWrite(DHT_PIN, LOW);                         // pull pin down for 18 miliseconds
         delayMicroseconds(10);
-        digitalWrite(DHT_PIN, HIGH);                            // then pull it up for 40 microseconds
+        digitalWrite(DHT_PIN, HIGH);                        // then pull it up for 40 microseconds
         delayMicroseconds(30);
 
-        pinMode(DHT_PIN, INPUT);                                // prepare to read the pin
-        for ( i=0; i< 85; i++) {                                // detect change and read data
+        pinMode(DHT_PIN, INPUT);                            // prepare to read the pin
+        for ( i=0; i< 85; i++) {                            // detect change and read data
             counter = 0;
             while (sizecvt(digitalRead(DHT_PIN)) == laststate) {
                 counter++;
@@ -683,16 +693,16 @@ int read_dht22_dat()
             }
             laststate = sizecvt(digitalRead(DHT_PIN));
 
-            if ((i >= 4) && (i%2 == 0)) {                  // ignore first 3 transitions
-                dht22_dat[j/8] <<= 1;                      // move over the last bit set
-                if (counter > 27)                          // if it took < 28us to see the transitition
-                    dht22_dat[j/8] |= 1;		   // set the bit high
+            if ((i >= 4) && (i%2 == 0)) {                   // ignore first 3 transitions
+                dht22_dat[j/8] <<= 1;                       // move over the last bit set
+                if (counter > 27)                           // if it took < 28us to see the transitition
+                    dht22_dat[j/8] |= 1;                    // set the bit high
                 j++;
             }
         }
 
         if (debugFlag > 2) {
-            sprintf(printBuffer, "DEBUG: DHT try #%d returned %d:%d:%d:%d:%d", 
+            sprintf(printBuffer, "DEBUG: DHT try #%d returned %d:%d:%d:%d:%d",
                 tries,dht22_dat[0], dht22_dat[1], dht22_dat[2], dht22_dat[3], dht22_dat[4]);
             syslog (LOG_NOTICE, printBuffer);
         }
@@ -820,7 +830,7 @@ void parse_opts(int argc, char *argv[])
                 printf("     Build Date: %s\n",BuildDate);
                 exit(EXIT_FAILURE);
             case 'w':
-		WeeFlag = 1;
+                WeeFlag = 1;
                 break;
             case '?':
                 print_usage(argv[0]);
@@ -857,7 +867,7 @@ void print_usage(const char *prog)
         "  -r --report     - number of observations before a report: Default 9\n"
         "  -s --samples    - number of samples to average the AD converter: Default 10\n"
         "  -S --sealevel   - local air pressure setting above sealevel\n"
-        "  -v --version    - print the version information\n" 
+        "  -v --version    - print the version information\n"
         "  -w --weewx      - write data to /temp/oswadata for the WeeWx oswabox driver");
     exit(EXIT_FAILURE);
 }
@@ -922,10 +932,12 @@ void signal_handler(int sig)
     }
 }
 
+
 float ohms2lux(float ohms)
 {
     return( 5e9 * pow(log10(ohms), -12.78) * sqrt(0.99) );
 }
+
 
 //
 // Interrupt  called every time an event occurs

@@ -22,7 +22,7 @@ OBJ	=	$(SRC:.c=.o)
 
 BINS	=	$(SRC:.c=)
 
-all:	start libgps.a blink wind rain mcp3008 temperature pressure \
+all:	start libgps.a LED wind rain MCP3008 DHT22 BMP085 \
 	rain wind gps-gpsd gps-serial oswabox oswaboxd
 	@echo "    $(BINS)" | fmt
 	@echo ""
@@ -36,14 +36,14 @@ libgps.a:	gps.o serial.o nmea.o
 
 
 
-blink:		blink.o
-	@$(CC) -o ${BUILD_DIR}/$@ blink.o $(LDFLAGS) $(LDLIBS)
+LED:		LED.o
+	@$(CC) -o ${BUILD_DIR}/$@ LED.o $(LDFLAGS) $(LDLIBS)
 
-temperature:	temperature.o locking.o
-	@$(CC) -o ${BUILD_DIR}/$@ temperature.o locking.o $(LDFLAGS) $(LDLIBS)
+DHT22:	DHT22.o locking.o
+	@$(CC) -o ${BUILD_DIR}/$@ DHT22.o locking.o $(LDFLAGS) $(LDLIBS)
 
-pressure:	pressure.o bmp085.o
-	@$(CC) -o ${BUILD_DIR}/$@ pressure.o bmp085.o $(LDFLAGS) $(LDLIBS)
+BMP085: BMP085.o bmp085_chip.o
+	@$(CC) -o ${BUILD_DIR}/$@ BMP085.o bmp085_chip.o $(LDFLAGS) $(LDLIBS)
 
 rain:		rain.o
 	@$(CC) -o ${BUILD_DIR}/$@ rain.o $(LDFLAGS) $(LDLIBS)
@@ -57,14 +57,14 @@ gps-gpsd:	gps-gpsd.o
 gps-serial:	gps-serial.o
 	@$(CC) -o ${BUILD_DIR}/$@ gps-serial.o libgps.a $(LDFLAGS) $(LDLIBS)
 
-mcp3008:	mcp3008.o
-	@$(CC) -o ${BUILD_DIR}/$@ mcp3008.o $(LDFLAGS) $(LDLIBS) 
+MCP3008:	MCP3008.o
+	@$(CC) -o ${BUILD_DIR}/$@ MCP3008.o $(LDFLAGS) $(LDLIBS) 
 
-oswabox:	oswabox.o bmp085.o
-	@$(CC) -o ${BUILD_DIR}/$@ oswabox.o libgps.a bmp085.o $(LDFLAGS) $(LDLIBS)
+oswabox:	oswabox.o bmp085_chip.o
+	@$(CC) -o ${BUILD_DIR}/$@ oswabox.o libgps.a bmp085_chip.o $(LDFLAGS) $(LDLIBS)
 
-oswaboxd:	oswaboxd.o bmp085.o 
-	@$(CC) -o ${BUILD_DIR}/$@ oswaboxd.o bmp085.o $(LDFLAGS) $(LDLIBS)
+oswaboxd:	oswaboxd.o bmp085_chip.o 
+	@$(CC) -o ${BUILD_DIR}/$@ oswaboxd.o bmp085_chip.o $(LDFLAGS) $(LDLIBS)
 
 install:
 	sudo cp ${BUILD_DIR}/$(BINS) /usr/bin

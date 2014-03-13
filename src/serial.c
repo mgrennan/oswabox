@@ -14,11 +14,11 @@ void serial_init(void)
 {
     uart0_filestream = open(PORTNAME, O_RDWR | O_NOCTTY | O_NDELAY);
 
-    if (uart0_filestream == -1)
-    {
+    if (uart0_filestream == -1) {
         //TODO error handling...
     }
 }
+
 
 void serial_config(void)
 {
@@ -31,6 +31,7 @@ void serial_config(void)
     tcflush(uart0_filestream, TCIFLUSH);
     tcsetattr(uart0_filestream, TCSANOW, &options);
 }
+
 
 void serial_println(const char *line, int len)
 {
@@ -48,6 +49,7 @@ void serial_println(const char *line, int len)
     }
 }
 
+
 // Read a line from UART.
 // Return a 0 len string in case of problems with UART
 void serial_readln(char *buffer, int len)
@@ -61,7 +63,8 @@ void serial_readln(char *buffer, int len)
         if (rx_length <= 0) {
             //wait for messages
             sleep(1);
-        } else {
+        }
+        else {
             if (c == '\n') {
                 *b++ = '\0';
                 break;
@@ -70,6 +73,7 @@ void serial_readln(char *buffer, int len)
         }
     }
 }
+
 
 void serial_close(void)
 {
