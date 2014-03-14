@@ -1,4 +1,4 @@
-/*
+//
 // oswaboxd - Open Source Weather and Air quality daemon
 //    Copyright: Mark Grennan - 2014/03/12
 //
@@ -10,7 +10,7 @@
 // http://www.oswabox.com/
 //
 //    LICENSE GPL Version 2.1
-*/
+//
 
 // TODO:
 //       Fix the average Wind Direction
@@ -19,6 +19,25 @@
 //		http://server.gladstonefamily.net/pipermail/wxqc/2006-July/004319.html
 //       Create network API to request fetch current condations in JSON format.
 //       Create output to The Citizen Weather Observer Program (CWOP).
+//       Create a APRS weather packet to got to a KISS TNC (http://www.aprs.org/doc/APRS101.PDF)
+//          KD5AMB:>WIDE2-2:@131029z3534.57N/09737.79W_211/003g005t037r000P000p000h47b06432xOSWA
+//		where: c = wind direction (in degrees).
+//                     s = sustained one-minute wind speed (in mph).
+//                     g = gust (peak wind speed in mph in the last 5 minutes).
+//                     t = temperature (in degrees Fahrenheit). Temperatures below
+//                         zero are expressed as -01 to -99.
+//                     r = rainfall (in hundredths of an inch) in the last hour.
+//                     p = rainfall (in hundredths of an inch) in the last 24 hours.
+//                     P = rainfall (in hundredths of an inch) since midnight.
+//                     h = humidity (in %. 00 = 100%).
+//                     b = barometric pressure (in tenths of millibars/tenths of hPascal).
+//                         Other parameters that are available on some weather station units include:
+//                     L = luminosity (in watts per square meter) 999 and below.
+//                         l (lower-case letter L) = luminosity (in watts per square meter)
+//                         1000 and above.
+//                          (L is inserted in place of one of the rain values).
+//                     s = snowfall (in inches) in the last 24 hours.
+//                     # = raw rain counter
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -56,7 +75,7 @@ void become_daemon() ;
 void RainInterrupt(void);
 void WindInterrupt(void);
 float pressure(int);
-float read_adc_dev(int);
+float read_adc_ohms(int);
 long readadc(int);
 uint8_t sizecvt(int);
 int read_dht22_dat();
@@ -118,7 +137,8 @@ struct statsRecord                                          // Structure use to 
     float highWindDir;                                      // Direction of gust
     float hourlyPrecip;
     float dailyPrecip;
-    float CurrentPressure;
+    float RainAccumulation;                                 // Current rainfall accumulation
+    float CurrentPressure;                                  // Current Air Pressure
 } stats;
 
 //
@@ -142,21 +162,20 @@ int main(int argc, char **argv)
     float CurrentTemperature = 0;                           // Current temperature in Centragrade
     float CurrentHumidity = 0;                              // Current humidity
 
-    float CurrentPressure = 0;                              // Current Air Pressure
+    float CurrentSolar = 0;                                 // Current Solar in W/M2
 
     float WindAccumulation = 0;                             // Wind speed
     float WindDirection = 0;                                // Current wind direction
     float WindDirectionAccumulation = 0;                    // Wind direction average in degrees
 
-    float RainAccumulation = 0;                             // Current rainfall accumulation
 
     float ADAccumulation[8];                                // Current values of AD convert 0-7
 
     parse_opts(argc,argv);                                  // check for command line arguments
 
-    //
-    // Initilize hardware and program settings
-    //
+    ////
+    //// Initilize hardware and program settings
+    ////
     if (wiringPiSetup () < 0) {                             // Setup all Raspberry Pi Pins
         fprintf (stderr, "Unable to setup wiringPi.\n");
         exit(EXIT_FAILURE);
@@ -173,7 +192,7 @@ int main(int argc, char **argv)
     }
     CurrentTemperature = -9999.0;                           // Set imposible numbers to start
     CurrentHumidity = -9999.0;
-    CurrentPressure = -9999.0;
+    stats.CurrentPressure = -9999.0;
     stats.tempHigh = -9999.0;
     stats.tempLow = 9999.0;
     stats.highWind = -1.0;
@@ -184,9 +203,9 @@ int main(int argc, char **argv)
     become_daemon();                                        // Disconnect from user and stay resident
     syslog (LOG_NOTICE, "Starting weather collection.");
 
-    //
-    // Read Daily Highs and Lows from the stats file
-    //
+    ////
+    //// Read Daily Highs and Lows from the stats file
+    ////
     fileHandle = fopen("/tmp/oswaboxStats", "rb");          // Read stats data to file if exists
     if (fileHandle != NULL) {
         if (debugFlag > 1) {
@@ -226,11 +245,10 @@ int main(int argc, char **argv)
         stats.dailyPrecip = -1.0;
     }
 
-    //
-    // Main / Outer Loop
-    //
-    // Make reading every CollectionPeriod - Average these reading over the ReportPeriod
-    //
+    ////
+    //// Main / Outer Loop
+    ////     Make reading every CollectionPeriod - Average these reading over the ReportPeriod
+    ////
     while (KeepAlive) {
         for (ReportLoop=0; ReportLoop<ReportPeriod; ReportLoop++) {
             if ( ! KeepAlive )                              // Check if we should bugger off
@@ -263,15 +281,15 @@ int main(int argc, char **argv)
             // Air Pressure
             //
             if ( pressureSet ) {                            // local/sea level pressure has been set
-                CurrentPressure = seaLevelPressure;
+                stats.CurrentPressure = seaLevelPressure;
                 pressureAdjust = pressure(0) - seaLevelPressure;
                 pressureSet = 0;
             }                                               // read air and adjust it
             else {
                                                             // Read Air Pressure
-                CurrentPressure = pressure(0) - pressureAdjust ;
+                stats.CurrentPressure = pressure(0) - pressureAdjust ;
             }
-            stats.CurrentPressure = CurrentPressure;        // save the current pressure in the stats record
+
             //
             // Wind
             //
@@ -293,10 +311,10 @@ int main(int argc, char **argv)
             //
             // Precipition
             //
-            RainAccumulation += RainCount * 0.011 ;         // Calculate the current rainfall
+            stats.RainAccumulation += RainCount * 0.011 ;   // Calculate the current rainfall
             RainCount = 0;                                  // Zero the Interupt counter
-            stats.hourlyPrecip += RainAccumulation;         // Accumulate the hourly rain total
-            stats.dailyPrecip += RainAccumulation;          // Accumulate the daily rain total
+            stats.hourlyPrecip += stats.RainAccumulation;   // Accumulate the hourly rain total
+            stats.dailyPrecip += stats.RainAccumulation;    // Accumulate the daily rain total
 
             digitalWrite (LED_PIN, LOW) ;                   // LED Off
 
@@ -313,11 +331,17 @@ int main(int argc, char **argv)
             // Air Quality
             //
             for (ADLoop=0; ADLoop<8; ADLoop++) {            // Read all the AD values
-                ADAccumulation[ADLoop] = read_adc_dev(ADLoop);
+                ADAccumulation[ADLoop] = read_adc_ohms(ADLoop);
             }
-            /*
-             * Output for the WeeWx weather station software - See below
-             */
+
+            //
+            // Solar Radition - 0.0079 is converstion to estimate of global horizontal irradiation
+            //
+            CurrentSolar = ohms2lux(ADAccumulation[TGS2600]) * 0.0079;  
+
+            ////
+            //// Output for the WeeWx weather station software - See below
+            ////
             if ( WeeFlag ) {                                // Write data for the WeeWx web service
 
                 fileHandle = fopen(WeeFile,"w");
@@ -327,18 +351,11 @@ int main(int argc, char **argv)
                     exit(EXIT_FAILURE);
                 }
                 else {
-                    // These are keyword used by WeeWx for weather guage/station data
                     sprintf(printBuffer,"dateTime %lu\noutTemp %4.2f\nbarometer %4.2f\nwindSpeed %4.2f\n",
-                        time(NULL), (9.0/5.0)*CurrentTemperature+32.0, CurrentPressure / 33.86, WindAccumulation );
+                        time(NULL), (9.0/5.0)*CurrentTemperature+32.0, stats.CurrentPressure / 33.86, WindAccumulation );
                     fwrite(printBuffer, strlen(printBuffer),1,fileHandle);
-                    sprintf(printBuffer,"windDir %4.2f\noutHumidity %4.2f\nrain %4.2f\nUV %10.2f\n",
-                        WindDirection, CurrentHumidity, RainAccumulation, (readadc(TGS2600)*1.0)/64);
-                    fwrite(printBuffer, strlen(printBuffer),1,fileHandle);
-                    sprintf(printBuffer,"dateTime %lu\noutTemp %4.2f\nbarometer %4.2f\nwindSpeed %4.2f\n",
-                        time(NULL), (9.0/5.0)*CurrentTemperature+32.0, CurrentPressure / 33.86, WindAccumulation );
-                    fwrite(printBuffer, strlen(printBuffer),1,fileHandle);
-                    sprintf(printBuffer,"windDir %4.2f\noutHumidity %4.2f\nrain %4.2f\nUV %10.2f\n",
-                        WindDirection, CurrentHumidity, RainAccumulation, (readadc(TGS2600)*1.0)/64);
+                    sprintf(printBuffer,"windDir %4.2f\noutHumidity %4.2f\nrain %4.2f\nradiation %8.2f\n",
+                        WindDirection, CurrentHumidity, stats.RainAccumulation, CurrentSolar);
                     fwrite(printBuffer, strlen(printBuffer),1,fileHandle);
                     fclose(fileHandle);
                 }
@@ -406,7 +423,7 @@ int main(int argc, char **argv)
                     syslog(LOG_NOTICE, printBuffer);
                     sprintf(printBuffer, "DEBUG: Daily High Temperature = %6.2f", stats.tempHigh);
                     syslog(LOG_NOTICE, printBuffer);
-                    sprintf(printBuffer, "DEBUG: RP Precipition = %6.2f", RainAccumulation);
+                    sprintf(printBuffer, "DEBUG: RP Precipition = %6.2f", stats.RainAccumulation);
                     syslog(LOG_NOTICE, printBuffer);
                     sprintf(printBuffer, "DEBUG: Hourly Precipition = %6.2f", stats.hourlyPrecip);
                     syslog(LOG_NOTICE, printBuffer);
@@ -427,9 +444,10 @@ int main(int argc, char **argv)
                         syslog(LOG_NOTICE, printBuffer);
                     }
                 }
-                /*
-                 * Output for the WeeWx weather station software
-                 */
+
+                ////
+                //// Output for the WeeWx weather station software
+                ////
                 if ( WeeFlag ) {                            // Write data for the WeeWx web service
 
                     fileHandle = fopen(WeeFile,"w");
@@ -441,18 +459,18 @@ int main(int argc, char **argv)
                     else {
                         // These are keyword used by WeeWx for weather guage/station data
                         sprintf(printBuffer,"dateTime %lu\noutTemp %4.2f\nbarometer %4.2f\nwindSpeed %4.2f\n",
-                            time(NULL), (9.0/5.0)*CurrentTemperature+32.0, CurrentPressure / 33.86, WindAccumulation);
+                            time(NULL), (9.0/5.0)*CurrentTemperature+32.0, stats.CurrentPressure / 33.86, WindAccumulation);
                         fwrite(printBuffer, strlen(printBuffer),1,fileHandle);
-                        sprintf(printBuffer,"windDir %4.2f\noutHumidity %4.2f\nrain %4.2f\naltitude %4.2f\nUV %10.2f\n",
-                            WindDirection, CurrentHumidity, RainAccumulation, CurrentAltitude, (readadc(TGS2600)*1.0)/64);
+                        sprintf(printBuffer,"windDir %4.2f\noutHumidity %4.2f\nrain %4.2f\naltitude %4.2f\nradition %4.2f\n",
+                            WindDirection, CurrentHumidity, stats.RainAccumulation, CurrentAltitude, CurrentSolar);
                         fwrite(printBuffer, strlen(printBuffer),1,fileHandle);
                         fclose(fileHandle);
                     }
                 }
 
-                //
-                // Write the observations to the named pipe or CSV file
-                //
+                ////
+                //// Write the observations to the named pipe or CSV file
+                ////
                 if (NPFlag || CSVFlag) {
                     if ( NPFlag )
                         fileHandle = fopen(NamedPipe,"rw");
@@ -470,7 +488,7 @@ int main(int argc, char **argv)
                          */
                         sprintf(printBuffer,"%s,%4.4f,%4.4f,%6.4f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f",
                             CurrentTime,CurrentLatitude,CurrentLongitude,CurrentAltitude,
-                            CurrentTemperature,CurrentHumidity,CurrentPressure,WindAccumulation,WindDirection);
+                            CurrentTemperature,CurrentHumidity,stats.CurrentPressure,WindAccumulation,WindDirection);
                         fwrite(printBuffer, strlen(printBuffer),1,fileHandle);
 
                         sprintf(printBuffer,",%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f,%4.2f\n",
@@ -502,7 +520,7 @@ int main(int argc, char **argv)
         // Zero accumlations for ths reporting period
         //
         WindDirectionAccumulation = 0.0;
-        RainAccumulation = 0.0;
+        stats.RainAccumulation = 0.0;
 
     }
 
@@ -559,22 +577,22 @@ float pressure(int temp)
 }
 
 
-/*
+//
 // Read the Analog to Digital Converter (ADC) and return the current
 //   resistence value. The value is calulated on the if the device is
 //   in a pullup or pull down circut, the input reference voltage and
 //   resistence devider value in ohms.
-*/
-float read_adc_dev(int pin)
+//
+float read_adc_ohms(int pin)
 {
     int i ;
     uint16_t ob ;
     float tot, avg, volt, value ;
-    /*
+    //
     //   vcc ----R1--+--R2---- GND   If device is R1 its a Pull-Up
     //               |               If device is R2 its a Pull-Down
     //              ADC
-    */
+    //
     struct device
     {
         int pullup ;                                        // 1 = device pulls up the Pin
@@ -615,7 +633,7 @@ float read_adc_dev(int pin)
 }
 
 
-/*
+//
 // Read the ADC data fromt the SPI buss
 // for Details see:
 //    https://projects.drogon.net/understanding-spi-on-the-raspberry-pi/
@@ -628,7 +646,7 @@ float read_adc_dev(int pin)
 //                 ADC Address
 //
 //  The bottem 10 bits are space for the returning data.
-*/
+//
 long readadc(int adcnum)
 {
     uint8_t buff[3] = { 0b00000001, 0b10000000, 0b00000000 }
@@ -636,9 +654,6 @@ long readadc(int adcnum)
     long adc;
 
     buff[1] += adcnum << 4 ;
-
-    if ( debugFlag > 2)
-        syslog (LOG_NOTICE, "DEBUG: Reading MCP3008 AD value");
 
     wiringPiSPIDataRW(0, buff, 3);
 
@@ -937,7 +952,6 @@ float ohms2lux(float ohms)
 {
     return( 5e9 * pow(log10(ohms), -12.78) * sqrt(0.99) );
 }
-
 
 //
 // Interrupt  called every time an event occurs
