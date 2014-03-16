@@ -353,7 +353,7 @@ float rain_fall(void)
 // Program variables
 //
 char i2cAddress = 0x77;
-char *device = "/dev/i2c-0";
+char *device = "/dev/i2c-1";
 int mode = 1;
 
 //
