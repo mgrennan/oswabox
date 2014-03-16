@@ -101,7 +101,7 @@ float ohms2lux(float);
 //
 char GPShost[20] = "127.0.0.1";                             // Host IP for GPSd data
 char GPSport[20] = "2947";                                  // Host PORT number for GPSd data
-char *BMP085_device = "/dev/i2c-0";                         // Linux device for I2C buss
+char *BMP085_device = "/dev/i2c-1";                         // Linux device for I2C buss
 char BMP085_i2cAddress = 0x77;                              // Device number on I2C buss for BMP085
 char *NamedPipe = "/tmp/OSWABoxPipe";                       // Named Pipe for CSV output
 char *CSVFile = "/tmp/OSWABoxData";                         // Named Pipe for CSV output
@@ -275,7 +275,6 @@ int main(int argc, char **argv)
                     CurrentHumidity = dht_humidity;         // Read Humidity
                 }
             }
-            stats.tempLow = CurrentTemperature;
 
             //
             // Air Pressure
@@ -784,6 +783,7 @@ void parse_opts(int argc, char *argv[])
             { "debug", required_argument, NULL, 'd' },
             { "gps",required_argument, NULL, 'g' },
             { "host",required_argument, NULL, 'h' },
+            { "i2cdev", required_argument, NULL, 'i' },
             { "NoHmt",no_argument, NULL, 'H' },
             { "namedpipe", no_argument, NULL, 'n' },
             { "port", required_argument, NULL, 'P' },
@@ -797,7 +797,7 @@ void parse_opts(int argc, char *argv[])
         };
         int c;
 
-        c = getopt_long(argc, argv, "B:cd:gh:HnP:p:r:s:S:vw?", lopts, NULL);
+        c = getopt_long(argc, argv, "B:cd:gh:Hi:nP:p:r:s:S:vw?", lopts, NULL);
 
         if (c == -1)
             break;
@@ -820,6 +820,9 @@ void parse_opts(int argc, char *argv[])
                 break;
             case 'H':
                 humidityFlag = 1;
+                break;
+            case 'i':
+                strcpy(BMP085_device, optarg); 
                 break;
             case 'n':
                 NPFlag = 1;
@@ -875,6 +878,7 @@ void print_usage(const char *prog)
         "  -g --gps        - turn on the GPS\n"
         "  -h --host       - GPS host IP; Default 127.0.0.1\n"
         "  -H --NoHmt      - do not read the humidity and get temp from pressure censor\n"
+        "  -i --i2cdev     - set the i2c device\n"
         "  -? --help       - print this help message\n"
         "  -n --namedpipe  - write CSV data to named pipe /tmp/OSWABoxPipe\n"
         "  -P --port       - GPS port; Default 2947\n"
