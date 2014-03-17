@@ -1,4 +1,4 @@
-/*
+//
 //  mcp3008.c - Read Air Quality sensors
 //  Mark Grennan - 2014-01-30
 //
@@ -15,7 +15,7 @@
 //  Run as follows:
 //
 //      sudo ./mcp3008
-*/
+//
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -33,6 +33,7 @@
 void print_usage(const char *);
 void parse_opts(int argc, char *argv[]);
 long readadc(int);
+int port = 1;
 float ohms2lux(float);
 
 #define samples 50                                          // Number of AD samples to take
@@ -46,11 +47,11 @@ int main(int argc, char *argv[])
 
     parse_opts(argc,argv);
 
-    /*
+    //
     //   VCC ----R1--+--R2---- GND   If device is R1 its a Pull-Up
     //               |               If device is R2 its a Pull-Down
     //              ADC
-    */
+    //
     struct device
     {
         int pullup ;                                        // 1 = device pulls up the Pin
@@ -71,7 +72,7 @@ int main(int argc, char *argv[])
         { 0, 3.3,    990.0, "Test Voltage    " }
     } ;
 
-    if (wiringPiSPISetup (0, 1500000) < 0)                  // initialize the WiringPi API channel and speed
+    if (wiringPiSPISetup (port, 1000000) < 0)                  // initialize the WiringPi API channel and speed
         return -1 ;                                         // the mcp3008 wants clock speed between 1.35 and 3.6Mz
 
     j = 0;                                                  // Start for pin 0
@@ -117,7 +118,8 @@ void print_usage(const char *prog)
 {
     printf("\n\nmcp3008 - Read and print analog to digital converter.\n\n");
     printf("Usage: %s [-h]\n", prog);
-    puts("  -h --help\t\t print this help message;\n");
+    puts("  -h --help\t\t print this help message;\n"
+         "  -p --port\n\n set the SPI port - 0 | 1\n");
 
     exit(EXIT_FAILURE);
 }
@@ -132,7 +134,7 @@ void parse_opts(int argc, char *argv[])
         };
         int c;
 
-        c = getopt_long(argc, argv, "h", lopts, NULL);
+        c = getopt_long(argc, argv, "hp:", lopts, NULL);
 
         if (c == -1)
             break;
@@ -140,6 +142,11 @@ void parse_opts(int argc, char *argv[])
         switch (c) {
             case 'h':
                 print_usage(argv[0]);
+                break;
+            case 'p':
+                port = atoi(optarg);
+                if (port != 0 || port != 1)
+                    print_usage(argv[0]);
                 break;
             default:
                 print_usage(argv[0]);
@@ -171,7 +178,7 @@ long readadc(adcnum)
 
     buff[1] += adcnum << 4 ;
 
-    wiringPiSPIDataRW(0, buff, 3);
+    wiringPiSPIDataRW(port, buff, 3);
 
     //      adc = ((buff[1] & 3) << 8) + buff[2];
                                                             // 10 bits of data
