@@ -120,6 +120,7 @@ int ADSamples = 10;                                         // number of read sa
 int NPFlag = 0;                                             // write obs to named pipe
 int CSVFlag = 0;                                            // write obs to file
 int WeeFlag = 0;                                            // write obs to file read by WeeWx
+int TempDev = 1;                                            // 1 = BMP, 0 = DHT
 int pressureSet = 0;
 struct gps_data_t gpsdata;
 float dht_tempature;
@@ -263,17 +264,18 @@ int main(int argc, char **argv)
             //
             // Temperature & Humidity
             //
-            if(humidityFlag) {                              // if -H set read temp from pressure censor
-                CurrentTemperature = pressure(1);           // Read Temperature
-            }
-            else {
+            if(! humidityFlag) {                            // if -H not set read temp humidity censor
                 if (debugFlag > 2) {
                     syslog (LOG_NOTICE, "DEBUG: Reading DHT");
                 }
                 if ( read_dht22_dat() ) {
-                    CurrentTemperature = dht_tempature;     // Read Temp from Humidity censor
-                    CurrentHumidity = dht_humidity;         // Read Humidity
+                    CurrentTemperature = dht_tempature;     // Read Temp from humidity censor
+                    CurrentHumidity = dht_humidity;         // Read humidity
                 }
+            }
+
+            if (TempDev || humidityFlag) {                  // TempDev set to BMP (default) or -H flat set
+                CurrentTemperature = pressure(1);           // Read Temperature
             }
 
             //
@@ -790,6 +792,7 @@ void parse_opts(int argc, char *argv[])
             { "period", required_argument, NULL, 'p' },
             { "report", required_argument, NULL, 'r' },
             { "samples", required_argument, NULL, 's' },
+            { "tempdev", required_argument, NULL, 't' },
             { "version", no_argument, NULL, 'v' },
             { "weewx", no_argument, NULL, 'w' },
             { "help", no_argument, NULL, '?' },
@@ -797,7 +800,7 @@ void parse_opts(int argc, char *argv[])
         };
         int c;
 
-        c = getopt_long(argc, argv, "B:cd:gh:Hi:nP:p:r:s:S:vw?", lopts, NULL);
+        c = getopt_long(argc, argv, "B:cd:gh:Hi:nP:p:r:s:S:t:vw?", lopts, NULL);
 
         if (c == -1)
             break;
@@ -843,6 +846,9 @@ void parse_opts(int argc, char *argv[])
                 pressureSet = 1;
                 seaLevelPressure = atof(optarg);
                 break;
+            case 't':
+		TempDev = 0;
+                break;
             case 'v':
                 printf("OSWABox Version: %s\n",Version);
                 printf("     Build Date: %s\n",BuildDate);
@@ -886,6 +892,7 @@ void print_usage(const char *prog)
         "  -r --report     - number of observations before a report: Default 9\n"
         "  -s --samples    - number of samples to average the AD converter: Default 10\n"
         "  -S --sealevel   - local air pressure setting above sealevel\n"
+        "  -t --temp       - switch temp sensor from BMP to DHT sensor\n"
         "  -v --version    - print the version information\n"
         "  -w --weewx      - write data to /temp/oswadata for the WeeWx oswabox driver");
     exit(EXIT_FAILURE);
