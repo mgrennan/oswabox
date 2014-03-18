@@ -74,14 +74,17 @@ void parse_opts(int argc, char *argv[]);
 void become_daemon() ;
 void RainInterrupt(void);
 void WindInterrupt(void);
-float pressure(int);
-float read_adc_ohms(int);
+double pressure(int);
+double read_adc_ohms(int);
 long readadc(int);
 uint8_t sizecvt(int);
 int read_dht22_dat();
-float windAverage(void);
+double windAverage(void);
 void signal_handler(int);
-float ohms2lux(float);
+double ohms2lux(double);
+double dewPoint(double, double);
+double windChill(double, double);
+double heatIndex(double, double);
 
 //
 // GPIO pin decrelations
@@ -123,23 +126,23 @@ int WeeFlag = 0;                                            // write obs to file
 int TempDev = 1;                                            // 1 = BMP, 0 = DHT
 int pressureSet = 0;
 struct gps_data_t gpsdata;
-float dht_tempature;
-float dht_humidity;
-float seaLevelPressure = 1000.0;
+double dht_tempature;
+double dht_humidity;
+double seaLevelPressure = 1000.0;
 uint8_t dht22_dat[5] = {0,0,0,0,0};
-float WindDir[100];                                         // Array use to average wind direction for on period
+double WindDir[100];                                         // Array use to average wind direction for on period
 
 struct statsRecord                                          // Structure use to write statistics record
 {
     time_t eventTime;
-    float tempHigh;
-    float tempLow;
-    float highWind;                                         // High wind speed (gust) for reporting period
-    float highWindDir;                                      // Direction of gust
-    float hourlyPrecip;
-    float dailyPrecip;
-    float RainAccumulation;                                 // Current rainfall accumulation
-    float CurrentPressure;                                  // Current Air Pressure
+    double tempHigh;
+    double tempLow;
+    double highWind;                                         // High wind speed (gust) for reporting period
+    double highWindDir;                                      // Direction of gust
+    double hourlyPrecip;
+    double dailyPrecip;
+    double RainAccumulation;                                 // Current rainfall accumulation
+    double CurrentPressure;                                  // Current Air Pressure
 } stats;
 
 //
@@ -152,25 +155,25 @@ int main(int argc, char **argv)
     FILE *fileHandle;                                       // Filesystem handle for open files
     char printBuffer[80];                                   // Array buffers
     int ReportLoop,ADLoop,DONE;
-    float pressureAdjust = 0.0;                             // Difference between reading and standard
+    double pressureAdjust = 0.0;                             // Difference between reading and standard
 
     char CurrentTime[25]  = "";                             // The current time UTC
 
-    float CurrentLatitude = 0;                              // The station's location
-    float CurrentLongitude = 0;
-    float CurrentAltitude = 0;
+    double CurrentLatitude = 0;                              // The station's location
+    double CurrentLongitude = 0;
+    double CurrentAltitude = 0;
 
-    float CurrentTemperature = 0;                           // Current temperature in Centragrade
-    float CurrentHumidity = 0;                              // Current humidity
+    double CurrentTemperature = 0;                           // Current temperature in Centragrade
+    double CurrentHumidity = 0;                              // Current humidity
 
-    float CurrentSolar = 0;                                 // Current Solar in W/M2
+    double CurrentSolar = 0;                                 // Current Solar in W/M2
 
-    float WindAccumulation = 0;                             // Wind speed
-    float WindDirection = 0;                                // Current wind direction
-    float WindDirectionAccumulation = 0;                    // Wind direction average in degrees
+    double WindAccumulation = 0;                             // Wind speed
+    double WindDirection = 0;                                // Current wind direction
+    double WindDirectionAccumulation = 0;                    // Wind direction average in degrees
 
 
-    float ADAccumulation[8];                                // Current values of AD convert 0-7
+    double ADAccumulation[8];                                // Current values of AD convert 0-7
 
     parse_opts(argc,argv);                                  // check for command line arguments
 
@@ -358,6 +361,10 @@ int main(int argc, char **argv)
                     sprintf(printBuffer,"windDir %4.2f\noutHumidity %4.2f\nrain %4.2f\nradiation %8.2f\n",
                         WindDirection, CurrentHumidity, stats.RainAccumulation, CurrentSolar);
                     fwrite(printBuffer, strlen(printBuffer),1,fileHandle);
+                    sprintf(printBuffer,"dewpoint %4.2f\nwindchill %4.2f\nheatindex %4.2f\n",
+                        dewPoint(CurrentTemperature, CurrentHumidity), 
+                        windChill(WindAccumulation,CurrentTemperature),heatIndex(CurrentTemperature, CurrentHumidity));
+                    fwrite(printBuffer, strlen(printBuffer),1,fileHandle);
                     fclose(fileHandle);
                 }
             }
@@ -465,6 +472,10 @@ int main(int argc, char **argv)
                         sprintf(printBuffer,"windDir %4.2f\noutHumidity %4.2f\nrain %4.2f\naltitude %4.2f\nradition %4.2f\n",
                             WindDirection, CurrentHumidity, stats.RainAccumulation, CurrentAltitude, CurrentSolar);
                         fwrite(printBuffer, strlen(printBuffer),1,fileHandle);
+                        sprintf(printBuffer,"dewpoint %4.2f\nwindchill %4.2f\nheatindex %4.2f\n",
+                            dewPoint(CurrentTemperature, CurrentHumidity), windChill(WindAccumulation, 
+                            CurrentTemperature),heatIndex(CurrentTemperature, CurrentHumidity));
+                        fwrite(printBuffer, strlen(printBuffer),1,fileHandle);
                         fclose(fileHandle);
                     }
                 }
@@ -538,7 +549,7 @@ int main(int argc, char **argv)
 //
 // Return air pressure in hPa
 //
-float pressure(int temp)
+double pressure(int temp)
 {
     int fileDescriptor = open(BMP085_device, O_RDWR);
     if (fileDescriptor < 0) {
@@ -584,11 +595,11 @@ float pressure(int temp)
 //   in a pullup or pull down circut, the input reference voltage and
 //   resistence devider value in ohms.
 //
-float read_adc_ohms(int pin)
+double read_adc_ohms(int pin)
 {
     int i ;
     uint16_t ob ;
-    float tot, avg, volt, value ;
+    double tot, avg, volt, value ;
     //
     //   vcc ----R1--+--R2---- GND   If device is R1 its a Pull-Up
     //               |               If device is R2 its a Pull-Down
@@ -597,8 +608,8 @@ float read_adc_ohms(int pin)
     struct device
     {
         int pullup ;                                        // 1 = device pulls up the Pin
-        float refvolt ;                                     // reverence voltage
-        float resistance ;                                  // resistence in ohms
+        double refvolt ;                                     // reverence voltage
+        double resistance ;                                  // resistence in ohms
         char *name ;                                        // device name
     }
     dev[8] = {
@@ -726,8 +737,8 @@ int read_dht22_dat()
         // check we read 40 bits (8bit x 5 ) + verify checksum in the last byte
         if ((j >= 40) && (dht22_dat[4] == ((dht22_dat[0] + dht22_dat[1] + dht22_dat[2] + dht22_dat[3]) & 0xFF)) ) {
 
-            dht_humidity = ((float)dht22_dat[0] * 256 + (float)dht22_dat[1]) / 10.0;
-            dht_tempature = ((float)(dht22_dat[2] & 0x7F)* 256 + (float)dht22_dat[3]) / 10.0;
+            dht_humidity = ((double)dht22_dat[0] * 256 + (double)dht22_dat[1]) / 10.0;
+            dht_tempature = ((double)(dht22_dat[2] & 0x7F)* 256 + (double)dht22_dat[3]) / 10.0;
 
             if ((dht22_dat[2] & 0x80) != 0)  dht_tempature *= -1;
 
@@ -740,12 +751,12 @@ int read_dht22_dat()
 }
 
 
-float windAverage(void)
+double windAverage(void)
 {
-    float WindDirection = 0;
+    double WindDirection = 0;
 
-    float totalX = 0.0;
-    float totalY = 0.0;
+    double totalX = 0.0;
+    double totalY = 0.0;
     int count;
 
     for (count=0; count < ReportPeriod; count++ ) {
@@ -959,9 +970,44 @@ void signal_handler(int sig)
 }
 
 
-float ohms2lux(float ohms)
+double ohms2lux(double ohms)
 {
     return( 5e9 * pow(log10(ohms), -12.78) * sqrt(0.99) );
+}
+
+//
+// Dew Point : T = Centagrade, RH = % Humidity
+//
+double dewPoint(double T, double RH) {
+    T = (9.0/5.0)*T+32.0;
+    return( 243.04*(log(RH/100)+((17.625*T)/(243.04+T)))/(17.625-log(RH/100)-((17.625*T)/(243.04+T))) );
+}
+
+//
+// Wind CHill : V = Wind speed in ?, T = Centagrade
+// http://en.wikipedia.org/wiki/Wind_chill
+// 
+double windChill(double V, double T) 
+{ 
+    if (T <= 10.0) { 
+       return (13.12 + 0.6215 * T - 11.37* V *(0.16) + 0.3965* T * V *(0.016)); 
+    } else 
+        return 1.0; 
+} 
+
+//
+//  Heat Index : T = Centagrade, R % Humidity 
+//
+double heatIndex(double T, double RH)
+{
+  T = (9.0/5.0)*T+32.0;
+  double c1 = -42.38, c2 = 2.049, c3 = 10.14, c4 = -0.2248, c5= -6.838e-3, c6=-5.482e-2, c7=1.228e-3, c8=8.528e-4, c9=-1.99e-6  ;
+
+  double A = (( c5 * T) + c2) * T + c1;
+  double B = (((c7 * T) + c4) * T + c3) * RH;
+  double C = (((c9 * T) + c8) * T + c6) * RH * RH;
+
+  return A + B + C;
 }
 
 //
