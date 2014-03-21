@@ -130,7 +130,7 @@ double dht_tempature;
 double dht_humidity;
 double seaLevelPressure = 1000.0;
 uint8_t dht22_dat[5] = {0,0,0,0,0};
-double WindDir[100];                                         // Array use to average wind direction for on period
+double *WindDir;                                            // Array use to average wind direction for on period
 
 struct statsRecord                                          // Structure use to write statistics record
 {
@@ -173,6 +173,8 @@ int main(int argc, char **argv)
 
 
     double ADAccumulation[8];                                // Current values of AD convert 0-7
+
+    WindDir = malloc(ReportPeriod * sizeof(double));         // Create an array for wind direction averaging
 
     parse_opts(argc,argv);                                   // check for command line arguments
 
@@ -303,7 +305,7 @@ int main(int argc, char **argv)
             //
             // Wind
             //
-            WindDirectionAccumulation = -95.0;              // wind direction +- degrees true north
+            WindDirectionAccumulation = 95.0;              // wind direction +- degrees true north
             WindDir[ReportLoop] = WindDirectionAccumulation;
             WindDirection = windAverage();
             if (debugFlag > 2) {
@@ -758,7 +760,6 @@ int read_dht22_dat()
     return 0;
 }
 
-
 double windAverage(void)
 {
     double WindDirection = 0;
@@ -767,30 +768,29 @@ double windAverage(void)
     double totalY = 0.0;
     int count;
 
-    for (count=0; count < ReportPeriod; count++ ) {
-        totalX = (WindDir[count]*sin(WindDir[count])) + totalX;
-        totalY = (WindDir[count]*cos(WindDir[count])) + totalY;
 
-        if ( totalY == 0.0)
-            WindDirection = 0.0;
-        else
-            WindDirection = atan(totalX/totalY);
 
-        WindDirection = WindDirection / 0.01745311;         // 3.14156 / 180
-
-        if (totalX*totalY < 0.0) {
-            if (totalX < 0.0)
-                WindDirection += 180.0;
-            else
-                WindDirection += 360.0;
-        }
-        else {
-            if (totalX > 0.0) {
-                WindDirection += 180.0;
-            }
-        }
-
+    for (count=0; count < ReportPeriod; count++ ) {     // total x and y corrinates
+        WindDir[count] = (WindDir[count] + 180) * (3.14156/180);
+        totalX += (WindDir[count] * sin(WindDir[count]));
+        totalY += (WindDir[count] * cos(WindDir[count]));
     }
+
+    WindDirection = atan(totalX / totalY);
+    WindDirection /= (3.14156 / 180);         //  convert radians bac to degrees
+
+    if ((totalX * totalY) < 0) {
+        if (totalX < 0) {
+            WindDirection += 180;
+        } else {
+            WindDirection += 360;
+        }
+    } else {
+        if (totalX > 0) {
+            WindDirection += 180;
+        }
+    }
+
     return (WindDirection);
 }
 
