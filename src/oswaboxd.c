@@ -79,7 +79,8 @@ double read_adc_ohms(int);
 long readadc(int);
 uint8_t sizecvt(int);
 int read_dht22_dat();
-double windAverage(void);
+double windDirGuage(void);
+void windAverage(void);
 void signal_handler(int);
 double ohms2lux(double);
 double dewPoint(double, double);
@@ -130,7 +131,10 @@ double dht_tempature;
 double dht_humidity;
 double seaLevelPressure = 1000.0;
 uint8_t dht22_dat[5] = {0,0,0,0,0};
-double *WindDir;                                            // Array use to average wind direction for on period
+double *WindSpd;                                            // Array use to average wind direction for on period
+double *WindDir;
+double WindSpeed;
+double WindDirection;
 
 struct statsRecord                                          // Structure use to write statistics record
 {
@@ -168,12 +172,12 @@ int main(int argc, char **argv)
     double CurrentSolar = 0;                                 // Current Solar in W/M2
 
     double WindAccumulation = 0;                             // Wind speed
-    double WindDirection = 0;                                // Current wind direction
     double WindDirectionAccumulation = 0;                    // Wind direction average in degrees
 
 
     double ADAccumulation[8];                                // Current values of AD convert 0-7
 
+    WindSpd = malloc(ReportPeriod * sizeof(double));         // Create an array for wind direction averaging
     WindDir = malloc(ReportPeriod * sizeof(double));         // Create an array for wind direction averaging
 
     parse_opts(argc,argv);                                   // check for command line arguments
@@ -187,6 +191,7 @@ int main(int argc, char **argv)
     }
     pinMode (LED_PIN, OUTPUT) ;                             // Set LED pin as an output
     digitalWrite (LED_PIN, LOW) ;                           // LED Off
+
     if ( wiringPiISR (RAIN_PIN, INT_EDGE_FALLING, &RainInterrupt) < 0 ) {
         fprintf (stderr, "Unable to setup ISR: %s\n", strerror (errno));
         exit(EXIT_FAILURE);
@@ -305,15 +310,14 @@ int main(int argc, char **argv)
             //
             // Wind
             //
-            WindDirectionAccumulation = 95.0;              // wind direction +- degrees true north
-            WindDir[ReportLoop] = WindDirectionAccumulation;
-            WindDirection = windAverage();
+            WindDir[ReportLoop] = windDirGuage();              // Return the direction in degrees
             if (debugFlag > 2) {
-                sprintf(printBuffer, "DEBUG: Wind Direction reading #%d=%6.2f  Average=%6.2f", ReportLoop+1,WindDirectionAccumulation,WindDirection);
+                sprintf(printBuffer, "DEBUG: Wind Direction reading #%d=%6.2f", ReportLoop+1,WindDirectionAccumulation);
                 syslog(LOG_NOTICE, printBuffer);
             }
 
-            WindAccumulation = WindCount * 1.492 ;          // Calculate the current wind speed
+            // Calculate the current wind speed = 1.492mph per interupt count per second
+            WindAccumulation = (WindCount * 1.492) / (time(NULL) - stats.eventTime) ;
             WindCount = 0;                                  // Zero the Interupt counter
             if ( WindAccumulation > stats.highWind ) {      // Capture the daily high wind speed
                 stats.highWind = WindAccumulation ;
@@ -331,15 +335,6 @@ int main(int argc, char **argv)
             digitalWrite (LED_PIN, LOW) ;                   // LED Off
 
             //
-            // Time
-            //
-            stats.eventTime = time(NULL);                          // Current Time from System
-            localTime = localtime(&stats.eventTime);
-            sprintf(CurrentTime,"20%02d:%02d:%02dT%02d:%02d:%02d.00Z",
-                localTime->tm_year-100, localTime->tm_mon+1, localTime->tm_mday,
-                localTime->tm_hour, localTime->tm_min, localTime->tm_sec);
-
-            //
             // Air Quality
             //
             for (ADLoop=0; ADLoop<8; ADLoop++) {            // Read all the AD values
@@ -350,6 +345,15 @@ int main(int argc, char **argv)
             // Solar Radition - 0.0079 is converstion to estimate of global horizontal irradiation
             //
             CurrentSolar = ohms2lux(ADAccumulation[TGS2600]) * 0.0079;  
+
+            //
+            // Time  -  NOTE: This needs to be done last to not effect other time based functions
+            //   
+            stats.eventTime = time(NULL);                          // Current Time from System
+            localTime = localtime(&stats.eventTime);
+            sprintf(CurrentTime,"20%02d:%02d:%02dT%02d:%02d:%02d.00Z",
+                localTime->tm_year-100, localTime->tm_mon+1, localTime->tm_mday,
+                localTime->tm_hour, localTime->tm_min, localTime->tm_sec);
 
             ////
             //// Output for the WeeWx weather station software - See below
@@ -381,10 +385,6 @@ int main(int argc, char **argv)
             // This Data is read only once per reporting period
             //
             if ( ReportLoop+1 == ReportPeriod ) {           // Report Opbservations
-                //
-                // These readings only need to be collected once per reporting period
-                //
-                digitalWrite (LED_PIN, HIGH) ;              // LED On
 
                 //
                 // GPS
@@ -418,50 +418,6 @@ int main(int argc, char **argv)
                     }
                 }
 
-                digitalWrite (LED_PIN, LOW) ;               // LED Off
-
-                // Opbservation Collection is DONE
-
-                if (debugFlag) {
-                    int ReportMinutes = CollectionPeriod * ReportPeriod / 60;
-                    int ReportSeconds = CollectionPeriod * ReportPeriod % 60;
-                    sprintf(printBuffer, "DEBUG: Current time %s", CurrentTime);
-                    syslog(LOG_NOTICE, printBuffer);
-                    sprintf(printBuffer, "DEBUG: Current Latitude %6.4f", CurrentLatitude);
-                    syslog(LOG_NOTICE, printBuffer);
-                    sprintf(printBuffer, "DEBUG: Current Longitude %6.4f", CurrentLongitude);
-                    syslog(LOG_NOTICE, printBuffer);
-                    sprintf(printBuffer, "DEBUG: Reporting Period (RP) %2d:%02d", ReportMinutes, ReportSeconds);
-                    syslog(LOG_NOTICE, printBuffer);
-                    sprintf(printBuffer, "DEBUG: Current Altitude %6.2f", CurrentAltitude);
-                    syslog(LOG_NOTICE, printBuffer);
-                    sprintf(printBuffer, "DEBUG: Current Temperature = %6.2f", CurrentTemperature);
-                    syslog(LOG_NOTICE, printBuffer);
-                    sprintf(printBuffer, "DEBUG: Daily High Temperature = %6.2f", stats.tempHigh);
-                    syslog(LOG_NOTICE, printBuffer);
-                    sprintf(printBuffer, "DEBUG: Air Pressure = %6.2f", stats.CurrentPressure);
-                    syslog(LOG_NOTICE, printBuffer);
-                    sprintf(printBuffer, "DEBUG: RP Precipition = %6.2f", stats.RainAccumulation);
-                    syslog(LOG_NOTICE, printBuffer);
-                    sprintf(printBuffer, "DEBUG: Hourly Precipition = %6.2f", stats.hourlyPrecip);
-                    syslog(LOG_NOTICE, printBuffer);
-                    sprintf(printBuffer, "DEBUG: Daily Precipition= %6.2f", stats.dailyPrecip);
-                    syslog(LOG_NOTICE, printBuffer);
-                    sprintf(printBuffer, "DEBUG: Current Windspeed = %6.2f", WindAccumulation);
-                    syslog(LOG_NOTICE, printBuffer);
-                    sprintf(printBuffer, "DEBUG: Current Wind Direction = %6.2f", WindDirection);
-                    syslog(LOG_NOTICE, printBuffer);
-                    sprintf(printBuffer, "DEBUG: RP High Wind speed = %6.2f", stats.highWind);
-                    syslog(LOG_NOTICE, printBuffer);
-                    sprintf(printBuffer, "DEBUG: RP High Wind Direction = %6.2f", stats.highWindDir);
-                    syslog(LOG_NOTICE, printBuffer);
-                    sprintf(printBuffer, "DEBUG: Solar Radiation Level = %6.2f", CurrentSolar);
-                    syslog(LOG_NOTICE, printBuffer);
-                    for (ADLoop=0; ADLoop<8; ADLoop++) {
-                        sprintf(printBuffer, "DEBUG: AD %d = %12.2f", ADLoop, ADAccumulation[ADLoop]);
-                        syslog(LOG_NOTICE, printBuffer);
-                    }
-                }
 
                 ////
                 //// Output for the WeeWx weather station software
@@ -524,9 +480,12 @@ int main(int argc, char **argv)
                 }
             }
 
+            digitalWrite (LED_PIN, LOW) ;               // LED Off
+
             //
             // Save Current Stats
             //
+            stats.eventTime = time(NULL);                          // Current Time from System
             fileHandle = fopen("/tmp/oswaboxStats", "w+b"); // Write stats data to file
             if (fileHandle == NULL) {
                 syslog (LOG_NOTICE, "ERROR: Failed to open /tmp/oswaboxStats\n");
@@ -760,9 +719,13 @@ int read_dht22_dat()
     return 0;
 }
 
-double windAverage(void)
+double windDirGuage(void)
 {
-    double WindDirection = 0;
+ return 90.0;
+}
+
+void windAverage(void)
+{
 
     double totalX = 0.0;
     double totalY = 0.0;
@@ -772,12 +735,16 @@ double windAverage(void)
 
     for (count=0; count < ReportPeriod; count++ ) {     // total x and y corrinates
         WindDir[count] = (WindDir[count] + 180) * (3.14156/180);
-        totalX += (WindDir[count] * sin(WindDir[count]));
-        totalY += (WindDir[count] * cos(WindDir[count]));
+        totalX += (WindSpd[count] * sin(WindDir[count]));
+        totalY += (WindSpd[count] * cos(WindDir[count]));
     }
 
-    WindDirection = atan(totalX / totalY);
-    WindDirection /= (3.14156 / 180);         //  convert radians bac to degrees
+    if (totalY == 0)
+        WindDirection = 0;
+    else {
+        WindDirection = atan(totalX / totalY);
+        WindDirection /= (3.14156 / 180);         //  convert radians back to degrees
+    }
 
     if ((totalX * totalY) < 0) {
         if (totalX < 0) {
@@ -791,9 +758,16 @@ double windAverage(void)
         }
     }
 
-    return (WindDirection);
-}
+    WindSpeed = pow(((pow(totalX,2) + pow(totalY,2)) / pow(ReportPeriod,2)), .5);
 
+    if (WindDirection == 0 && WindSpeed != 0)
+        WindDirection = 360;
+
+    if (WindSpeed == 0)
+        WindDirection = 0;
+
+    return;
+}
 
 void parse_opts(int argc, char *argv[])
 {
